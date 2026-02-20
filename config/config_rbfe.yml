@@ -1,0 +1,240 @@
+# RBFE (Relative Binding Free Energy) Workflow Configuration
+# ===========================================================
+#
+# This configuration file defines all settings for the RBFE workflow.
+# For detailed documentation of each setting, see doc/workflow_settings.md
+
+# Workflow method
+method: rbfe
+
+# Input files
+# -----------
+# Glob pattern for ligand input files (SDF format)
+ligands: "workflow/inputs/ligands/*.sdf"
+
+# Glob pattern for protein input files (coordinates and topology).
+# Assumes parameterised files (e.g., rst7 and prm7 from AmberTools).
+# Do not mix multiple file types or multiple proteins.
+protein_files: "workflow/inputs/protein/protein.*"
+
+# Working directory for all workflow outputs
+working_directory: "output/rbfe"
+
+# Number of threads for simulations (important for GROMACS performance)
+simulation_threads: 5
+
+# Network settings
+# ----------------
+# Controls how the RBFE perturbation network is built from the ligand set.
+# These settings are ignored if the network has been prepared manually.
+network_settings:
+  # Number of lambda windows for easy perturbations (LOMAP score >= lomap_threshold)
+  lambda_windows: 11
+  # LOMAP score threshold separating easy from difficult perturbations (0-1)
+  lomap_threshold: 0.5
+  # Number of lambda windows for difficult perturbations (LOMAP score < lomap_threshold)
+  diff_lambda_windows: 17
+
+# Ligand setup settings
+# ---------------------
+setup_settings:
+  # Force field for ligand parameterisation
+  ligand_forcefield: "gaff2"
+  # Water model for solvation
+  water_model: "tip3p"
+  # Ion concentration in mol/L for charge neutralisation
+  ion_concentration: 0.15
+  # Minimum distance from solute to box edge in nm
+  box_length: 5.0
+  # Box geometry type
+  box_type: "cubic"
+
+# Minimisation and equilibration stages for FREE leg
+# ---------------------------------------------------
+# Based on the conservative protocol from https://doi.org/10.1063/5.0013849
+# Adapted for ligand-only systems (no backbone restraints needed).
+# restraint-force-constant units: kcal/(mol·Å²)
+min/eq-stages-free:
+  minimisation1:
+    engine: gromacs
+    minimisation-steps: 1000
+    restraint-string: heavy
+    restraint-force-constant: 5.0
+  equilibration1:
+    engine: gromacs
+    timestep: 1fs
+    runtime: 15ps
+    temperature: 300K
+    thermostat-time-constant: 0.5ps
+    restraint-string: heavy
+    restraint-force-constant: 5.0
+  minimisation2:
+    engine: gromacs
+    minimisation-steps: 1000
+    restraint-string: heavy
+    restraint-force-constant: 2.0
+  minimisation3:
+    engine: gromacs
+    minimisation-steps: 1000
+    restraint-string: heavy
+    restraint-force-constant: 0.1
+  minimisation4:
+    engine: gromacs
+    minimisation-steps: 1000
+  equilibration2:
+    engine: gromacs
+    timestep: 1fs
+    runtime: 5ps
+    temperature: 300K
+    pressure: 1bar
+    thermostat-time-constant: 1ps
+    restraint-string: heavy
+    restraint-force-constant: 1.0
+  equilibration3:
+    engine: gromacs
+    timestep: 1fs
+    runtime: 5ps
+    temperature: 300K
+    pressure: 1bar
+    thermostat-time-constant: 1ps
+    restraint-string: heavy
+    restraint-force-constant: 0.5
+  equilibration4:
+    engine: gromacs
+    timestep: 2fs
+    runtime: 10ps
+    temperature: 300K
+    pressure: 1bar
+    thermostat-time-constant: 1ps
+
+# Minimisation and equilibration stages for BOUND leg
+# ----------------------------------------------------
+# Includes an additional backbone restraint stage for protein stability.
+min/eq-stages-bound:
+  minimisation1:
+    engine: gromacs
+    minimisation-steps: 1000
+    restraint-string: heavy
+    restraint-force-constant: 5.0
+  equilibration1:
+    engine: gromacs
+    timestep: 1fs
+    runtime: 15ps
+    temperature: 300K
+    thermostat-time-constant: 0.5ps
+    restraint-string: heavy
+    restraint-force-constant: 5.0
+  minimisation2:
+    engine: gromacs
+    minimisation-steps: 1000
+    restraint-string: heavy
+    restraint-force-constant: 2.0
+  minimisation3:
+    engine: gromacs
+    minimisation-steps: 1000
+    restraint-string: heavy
+    restraint-force-constant: 0.1
+  minimisation4:
+    engine: gromacs
+    minimisation-steps: 1000
+  equilibration2:
+    engine: gromacs
+    timestep: 1fs
+    runtime: 5ps
+    temperature: 300K
+    pressure: 1bar
+    thermostat-time-constant: 1ps
+    restraint-string: heavy
+    restraint-force-constant: 1.0
+  equilibration3:
+    engine: gromacs
+    timestep: 1fs
+    runtime: 5ps
+    temperature: 300K
+    pressure: 1bar
+    thermostat-time-constant: 1ps
+    restraint-string: heavy
+    restraint-force-constant: 0.5
+  equilibration4:
+    engine: gromacs
+    timestep: 1fs
+    runtime: 10ps
+    temperature: 300K
+    pressure: 1bar
+    thermostat-time-constant: 1ps
+    restraint-string: backbone
+    restraint-force-constant: 0.5
+  equilibration5:
+    engine: gromacs
+    timestep: 2fs
+    runtime: 10ps
+    temperature: 300K
+    pressure: 1bar
+    thermostat-time-constant: 1ps
+
+# Production settings
+# -------------------
+production-settings:
+  # Number of independent replicas for error estimation
+  num_replicas: 3
+
+  # MD engine for production: gromacs or somd2
+  engine: gromacs
+
+  # GROMACS-specific settings (used when engine: gromacs)
+  gromacs-settings:
+    # Hydrogen mass repartitioning factor (3 recommended for GROMACS with 4fs timestep)
+    hmr_factor: 3
+
+    # Settings for FREE leg production
+    free-leg-settings:
+      runtime: 10ps           # Production runtime per lambda window (typical production: 2ns)
+      timestep: 4fs           # Integration timestep (requires HMR for 4fs)
+      temperature: 300K       # Simulation temperature
+      pressure: 1bar          # Pressure for NPT ensemble
+      use-modified-dummies: true  # Apply ghostly dummy atom modifications (https://doi.org/10.1021/acs.jctc.0c01328)
+      report-interval: 1ps    # Energy reporting interval (fine-grained for MBAR)
+      restart-interval: 500ps # Checkpoint interval (~4 frames per 2ns run)
+
+    # Settings for BOUND leg production
+    bound-leg-settings:
+      runtime: 10ps
+      timestep: 4fs
+      temperature: 300K
+      pressure: 1bar
+      use-modified-dummies: true
+      report-interval: 1ps
+      restart-interval: 500ps
+
+  # SOMD2-specific settings (used when engine: somd2)
+  # HMR is applied in the pre-production step, so SOMD2 uses hmr=False internally.
+  somd2-settings:
+    runtime: 10ps             # Production runtime per lambda window (typical production: 2ns)
+    timestep: 4fs             # Integration timestep
+    temperature: 300K         # Simulation temperature
+    pressure: 1bar            # Pressure for NPT ensemble
+    use-modified-dummies: true   # Apply ghostly dummy atom modifications
+    cutoff_type: RF           # Electrostatics cutoff type (RF or PME). RF is faster and more thoroughly tested.
+    cutoff: 12A               # Cutoff distance (12Å recommended for RF)
+    energy_frequency: 1ps     # Energy sampling interval (keep fine-grained for MBAR)
+    frame_frequency: 500ps    # Trajectory frame saving interval
+    checkpoint_frequency: 500ps  # Checkpoint saving interval
+    integrator: langevin_middle  # Integrator type
+    shift_delta: 1.5A         # Soft-core shift delta parameter
+    perturbable_constraint: h_bonds_not_heavy_perturbed  # Constraint type for perturbable molecules
+    # Runner type: "repex" (replica exchange) or "standard" (independent windows).
+    # repex requires all lambda windows to be loaded into GPU memory simultaneously
+    # (one OpenMM context per window), so a multi-GPU setup with sufficient total
+    # VRAM is needed. For single-GPU or low-memory setups, use "standard" instead.
+    runner: repex
+    gpus_per_job: 1           # Number of GPUs per job (repex distributes windows across GPUs)
+
+# Analysis settings
+# -----------------
+analysis-settings:
+  # Plotting backend: "native" (matplotlib) or "cinnabar" (if installed)
+  backend: cinnabar
+  # Path to experimental results file (optional)
+  experimental-results: workflow/inputs/exp_data_tyk2.dat
+  # Units of experimental data: "kcal/mol", "kJ/mol", or "Ki_uM"
+  experimental-units: Ki_uM

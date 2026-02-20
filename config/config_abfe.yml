@@ -1,0 +1,255 @@
+# ABFE (Absolute Binding Free Energy) Workflow Configuration
+# ===========================================================
+#
+# This configuration file defines all settings for the ABFE workflow.
+# For detailed documentation of each setting, see doc/abfe_settings.md
+
+# Workflow method
+method: abfe
+
+# Input files
+# -----------
+# Glob pattern for ligand input files (SDF format)
+ligands: "workflow/inputs/ligands/*.sdf"
+
+# Glob pattern for protein input files (coordinates and topology)
+# Assumes parameterised protein files (e.g., rst7 and prm7 from AmberTools)
+protein_files: "workflow/inputs/protein/protein.*"
+
+# Working directory for all workflow outputs
+working_directory: "output/abfe"
+
+# Number of threads for simulations (important for GROMACS performance)
+simulation_threads: 5
+
+# Ligand setup settings
+# ---------------------
+setup_settings:
+  # Force field for ligand parameterisation
+  ligand_forcefield: "gaff2"
+  # Water model for solvation
+  water_model: "tip3p"
+  # Ion concentration in mol/L for charge neutralisation
+  ion_concentration: 0.15
+  # Box padding in nm (added to ligand/protein bounding box)
+  box_length: 5.0
+  # Box geometry type
+  box_type: "cubic"
+
+# Restraint search settings
+# -------------------------
+# Settings for finding optimal Boresch restraints
+restraint_search_settings:
+  # Runtime for unrestrained equilibration before restraint search (ns)
+  search_runtime: "1ns"
+  # Temperature for restraint search simulation
+  temperature: "300K"
+  # Method for restraint selection: "BSS" (BioSimSpace built-in)
+  method: "BSS"
+  # Type of restraint: "Boresch" (6 DOF: 1 distance, 2 angles, 3 dihedrals)
+  restraint_type: "Boresch"
+
+# Minimisation and equilibration stages for FREE leg
+# --------------------------------------------------
+# Based on the conservative protocol from https://doi.org/10.1063/5.0013849
+# Adapted for ligand-only systems (no backbone restraints needed)
+min/eq-stages-free:
+  minimisation1:
+    engine: gromacs
+    minimisation-steps: 1000
+    restraint-string: heavy
+    restraint-force-constant: 5.0
+  equilibration1:
+    engine: gromacs
+    timestep: 1fs
+    runtime: 15ps
+    temperature: 300K
+    thermostat-time-constant: 0.5ps
+    restraint-string: heavy
+    restraint-force-constant: 5.0
+  minimisation2:
+    engine: gromacs
+    minimisation-steps: 1000
+    restraint-string: heavy
+    restraint-force-constant: 2.0
+  minimisation3:
+    engine: gromacs
+    minimisation-steps: 1000
+    restraint-string: heavy
+    restraint-force-constant: 0.1
+  minimisation4:
+    engine: gromacs
+    minimisation-steps: 1000
+  equilibration2:
+    engine: gromacs
+    timestep: 1fs
+    runtime: 5ps
+    temperature: 300K
+    pressure: 1bar
+    thermostat-time-constant: 1ps
+    restraint-string: heavy
+    restraint-force-constant: 1
+  equilibration3:
+    engine: gromacs
+    timestep: 1fs
+    runtime: 5ps
+    temperature: 300K
+    pressure: 1bar
+    thermostat-time-constant: 1ps
+    restraint-string: heavy
+    restraint-force-constant: 0.5
+  equilibration4:
+    engine: gromacs
+    timestep: 2fs
+    runtime: 10ps
+    temperature: 300K
+    pressure: 1bar
+    thermostat-time-constant: 1ps
+
+# Minimisation and equilibration stages for BOUND leg
+# ---------------------------------------------------
+# Includes additional backbone restraint stages for protein stability
+min/eq-stages-bound:
+  minimisation1:
+    engine: gromacs
+    minimisation-steps: 1000
+    restraint-string: heavy
+    restraint-force-constant: 5.0
+  equilibration1:
+    engine: gromacs
+    timestep: 1fs
+    runtime: 15ps
+    temperature: 300K
+    thermostat-time-constant: 0.5ps
+    restraint-string: heavy
+    restraint-force-constant: 5.0
+  minimisation2:
+    engine: gromacs
+    minimisation-steps: 1000
+    restraint-string: heavy
+    restraint-force-constant: 2.0
+  minimisation3:
+    engine: gromacs
+    minimisation-steps: 1000
+    restraint-string: heavy
+    restraint-force-constant: 0.1
+  minimisation4:
+    engine: gromacs
+    minimisation-steps: 1000
+  equilibration2:
+    engine: gromacs
+    timestep: 1fs
+    runtime: 5ps
+    temperature: 300K
+    pressure: 1bar
+    thermostat-time-constant: 1ps
+    restraint-string: heavy
+    restraint-force-constant: 1
+  equilibration3:
+    engine: gromacs
+    timestep: 1fs
+    runtime: 5ps
+    temperature: 300K
+    pressure: 1bar
+    thermostat-time-constant: 1ps
+    restraint-string: heavy
+    restraint-force-constant: 0.5
+  equilibration4:
+    engine: gromacs
+    timestep: 1fs
+    runtime: 10ps
+    temperature: 300K
+    pressure: 1bar
+    thermostat-time-constant: 1ps
+    restraint-string: backbone
+    restraint-force-constant: 0.5
+  equilibration5:
+    engine: gromacs
+    timestep: 2fs
+    runtime: 10ps
+    temperature: 300K
+    pressure: 1bar
+    thermostat-time-constant: 1ps
+
+# ABFE production settings
+# ------------------------
+production-settings:
+  # Number of independent replicas for error estimation
+  num_replicas: 3
+
+  # MD engine for production: gromacs or somd2
+  engine: gromacs
+
+  # GROMACS-specific settings (used when engine: gromacs)
+  gromacs-settings:
+    # Hydrogen mass repartitioning factor (3 for GROMACS with 4fs timestep)
+    hmr_factor: 3
+
+    # Unified lambda schedules for ABFE legs
+    # Each leg uses a single 21-window schedule with bonded/coul/vdw columns
+    # Windows 0-10: bonded+coul ramp together (vdw=0)
+    # Windows 11-20: bonded=1, coul=1, vdw ramps 0.1->1.0
+    lambda_schedules:
+      bound:
+        bonded: [0.0, 0.010, 0.025, 0.05, 0.075, 0.10, 0.15, 0.22, 0.35, 0.75, 1.0,
+                 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
+        coul: [0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0,
+               1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
+        vdw: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+              0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]
+      free:
+        coul: [0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0,
+               1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
+        vdw: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+              0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]
+
+    # Settings for FREE leg production
+    free-leg-settings:
+      runtime: 2ns
+      timestep: 4fs
+      temperature: 300K
+      pressure: 1bar
+      report-interval: 1ps    # Energy reporting interval (fine-grained for MBAR)
+      restart-interval: 500ps # Checkpoint interval (~4 frames per 2ns run)
+
+    # Settings for BOUND leg production
+    bound-leg-settings:
+      runtime: 2ns
+      timestep: 4fs
+      temperature: 300K
+      pressure: 1bar
+      report-interval: 1ps
+      restart-interval: 500ps
+
+  # SOMD2-specific settings (used when engine: SOMD2)
+  # SOMD2 handles HMR internally with an OpenMM-appropriate factor
+  somd2-settings:
+    runtime: 2ns
+    timestep: 4fs
+    temperature: 298K
+    cutoff_type: PME
+    cutoff: 10A
+    num_lambda: 21
+    energy_frequency: 1ps
+    integrator: langevin_middle
+    shift_delta: 2.25A
+    perturbable_constraint: h_bonds_not_heavy_perturbed
+    # Runner type: "repex" (replica exchange) or "standard" (independent windows).
+    # repex requires all lambda windows to be loaded into GPU memory simultaneously
+    # (one OpenMM context per window), so a multi-GPU setup with sufficient total
+    # VRAM is needed. For single-GPU or low-memory setups, use "standard" instead.
+    equilibration_time: 20ps
+    runner: repex
+    # Number of GPUs per production job (repex distributes replicas across GPUs)
+    gpus_per_job: 3
+
+# Analysis settings
+# -----------------
+analysis-settings:
+  # Plotting backend: "native" (matplotlib) or "cinnabar" (if installed)
+  backend: native
+  # Path to experimental results file (optional)
+  # Format: CSV with columns "ligand,value,error"
+  # experimental-results: workflow/inputs/exp_data.csv
+  # Units of experimental data: "kcal/mol", "kJ/mol", or "Ki_uM"
+  # experimental-units: kcal/mol

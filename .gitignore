@@ -1,0 +1,25 @@
+# Workflow outputs
+output/
+abfe_runs/
+abfe_runs_test/
+
+# Snakemake
+.snakemake/
+
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Editor
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+
+# Debug
+debug/
+cache/
+mdout.mdp

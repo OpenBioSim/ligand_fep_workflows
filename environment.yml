@@ -1,0 +1,13 @@
+name: workflow
+channels:
+  - conda-forge
+  - bioconda
+  - openbiosim/label/dev
+dependencies:
+  - ambertools
+  - cinnabar
+  - mdrestraintsgenerator
+  - pandas
+  - snakemake
+  - snakemake-executor-plugin-slurm
+  - somd2

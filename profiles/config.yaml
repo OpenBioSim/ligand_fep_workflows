@@ -1,0 +1,11 @@
+# very basic profile for SLURM jobs
+cores: all
+jobs: 100
+keep-incomplete: true          # Preserve failed job outputs for debugging
+keep-going: true               # Continue running independent jobs on failure
+default-resources:
+    slurm_account: default
+    mem_mb: 5000
+    runtime: "4320m"            # 72h (3 days) — production runs ~52h for 21 lambda windows
+    gpu: 1
+    cpus_per_gpu: 5

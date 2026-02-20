@@ -1,0 +1,140 @@
+# ABFE Test Configuration — fast end-to-end validation
+# ====================================================
+#
+# Inherits structure from config_abfe.yml but with minimal runtimes
+# and lambda windows so the full workflow completes in minutes.
+#
+# Usage:
+#   snakemake -s workflow/Snakefile --configfile config/config_abfe_test.yml ...
+#
+# Results will NOT be physically meaningful — this is purely for
+# checking that all stages connect and run without errors.
+
+method: abfe
+
+# Input files (same as production)
+ligands: "workflow/inputs/ligands/*.sdf"
+protein_files: "workflow/inputs/protein/protein.*"
+
+working_directory: "output/abfe_test"
+simulation_threads: 5
+
+# Ligand setup settings (unchanged — setup is fast)
+setup_settings:
+  ligand_forcefield: "gaff2"
+  water_model: "tip3p"
+  ion_concentration: 0.15
+  box_length: 5.0
+  box_type: "cubic"
+
+# Restraint search — very short
+restraint_search_settings:
+  search_runtime: "10ps"
+  temperature: "300K"
+  method: "BSS"
+  restraint_type: "Boresch"
+
+# Minimal min/eq for FREE leg
+min/eq-stages-free:
+  minimisation1:
+    engine: gromacs
+    minimisation-steps: 100
+    restraint-string: heavy
+    restraint-force-constant: 5.0
+  equilibration1:
+    engine: gromacs
+    timestep: 1fs
+    runtime: 2ps
+    temperature: 300K
+    thermostat-time-constant: 0.5ps
+    restraint-string: heavy
+    restraint-force-constant: 5.0
+  minimisation2:
+    engine: gromacs
+    minimisation-steps: 100
+  equilibration2:
+    engine: gromacs
+    timestep: 2fs
+    runtime: 2ps
+    temperature: 300K
+    pressure: 1bar
+    thermostat-time-constant: 1ps
+
+# Minimal min/eq for BOUND leg
+min/eq-stages-bound:
+  minimisation1:
+    engine: gromacs
+    minimisation-steps: 100
+    restraint-string: heavy
+    restraint-force-constant: 5.0
+  equilibration1:
+    engine: gromacs
+    timestep: 1fs
+    runtime: 2ps
+    temperature: 300K
+    thermostat-time-constant: 0.5ps
+    restraint-string: heavy
+    restraint-force-constant: 5.0
+  minimisation2:
+    engine: gromacs
+    minimisation-steps: 100
+  equilibration2:
+    engine: gromacs
+    timestep: 2fs
+    runtime: 2ps
+    temperature: 300K
+    pressure: 1bar
+    thermostat-time-constant: 1ps
+
+# Production — minimal
+production-settings:
+  num_replicas: 1
+  engine: gromacs
+
+  gromacs-settings:
+    hmr_factor: 3
+    lambda_schedules:
+      bound:
+        bonded: [0.0, 0.5, 1.0, 1.0, 1.0]
+        coul: [0.0, 0.5, 1.0, 1.0, 1.0]
+        vdw: [0.0, 0.0, 0.0, 0.5, 1.0]
+      free:
+        coul: [0.0, 0.5, 1.0, 1.0, 1.0]
+        vdw: [0.0, 0.0, 0.0, 0.5, 1.0]
+    free-leg-settings:
+      runtime: 10ps
+      timestep: 4fs
+      temperature: 300K
+      pressure: 1bar
+      report-interval: 1ps
+      restart-interval: 10ps
+    bound-leg-settings:
+      runtime: 10ps
+      timestep: 4fs
+      temperature: 300K
+      pressure: 1bar
+      report-interval: 1ps
+      restart-interval: 2ps
+
+  somd2-settings:
+    runtime: 10ps
+    timestep: 4fs
+    temperature: 298K
+    cutoff_type: RF
+    cutoff: 10A
+    num_lambda: 5
+    energy_frequency: 1ps
+    frame_frequency: 10ps
+    checkpoint_frequency: 10ps
+    integrator: langevin_middle
+    shift_delta: 2.25A
+    perturbable_constraint: h_bonds_not_heavy_perturbed
+    equilibration_time: 5ps
+    # "standard" used here for single-GPU test runs. For production with multiple
+    # GPUs, "repex" is preferred but requires enough VRAM for all lambda windows.
+    runner: standard
+    gpus_per_job: 3
+
+# Analysis settings (unchanged)
+analysis-settings:
+  backend: native

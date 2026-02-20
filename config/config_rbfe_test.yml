@@ -1,0 +1,124 @@
+# RBFE Test Configuration — fast end-to-end validation
+# ====================================================
+#
+# Minimal runtimes and lambda windows so the full workflow completes
+# in minutes. Results will NOT be physically meaningful.
+#
+# Usage:
+#   snakemake -s workflow/Snakefile --configfile config/config_rbfe_test.yml --cores 8
+
+method: rbfe
+
+ligands: "workflow/inputs/ligands/*.sdf"
+protein_files: "workflow/inputs/protein/protein.*"
+working_directory: "output/rbfe_test"
+simulation_threads: 5
+
+network_settings:
+  lambda_windows: 5
+  lomap_threshold: 0.5
+  diff_lambda_windows: 5
+
+setup_settings:
+  ligand_forcefield: "gaff2"
+  water_model: "tip3p"
+  ion_concentration: 0.15
+  box_length: 5.0
+  box_type: "cubic"
+
+min/eq-stages-free:
+  minimisation1:
+    engine: gromacs
+    minimisation-steps: 100
+    restraint-string: heavy
+    restraint-force-constant: 5.0
+  equilibration1:
+    engine: gromacs
+    timestep: 1fs
+    runtime: 2ps
+    temperature: 300K
+    thermostat-time-constant: 0.5ps
+    restraint-string: heavy
+    restraint-force-constant: 5.0
+  minimisation2:
+    engine: gromacs
+    minimisation-steps: 100
+  equilibration2:
+    engine: gromacs
+    timestep: 2fs
+    runtime: 2ps
+    temperature: 300K
+    pressure: 1bar
+    thermostat-time-constant: 1ps
+
+min/eq-stages-bound:
+  minimisation1:
+    engine: gromacs
+    minimisation-steps: 100
+    restraint-string: heavy
+    restraint-force-constant: 5.0
+  equilibration1:
+    engine: gromacs
+    timestep: 1fs
+    runtime: 2ps
+    temperature: 300K
+    thermostat-time-constant: 0.5ps
+    restraint-string: heavy
+    restraint-force-constant: 5.0
+  minimisation2:
+    engine: gromacs
+    minimisation-steps: 100
+  equilibration2:
+    engine: gromacs
+    timestep: 2fs
+    runtime: 2ps
+    temperature: 300K
+    pressure: 1bar
+    thermostat-time-constant: 1ps
+
+production-settings:
+  num_replicas: 1
+  engine: gromacs
+
+  gromacs-settings:
+    hmr_factor: 3
+    free-leg-settings:
+      runtime: 10ps
+      timestep: 4fs
+      temperature: 300K
+      pressure: 1bar
+      use-modified-dummies: true
+      report-interval: 1ps
+      restart-interval: 10ps
+    bound-leg-settings:
+      runtime: 10ps
+      timestep: 4fs
+      temperature: 300K
+      pressure: 1bar
+      use-modified-dummies: true
+      report-interval: 1ps
+      restart-interval: 2ps
+
+  somd2-settings:
+    runtime: 10ps
+    timestep: 4fs
+    temperature: 300K
+    pressure: 1bar
+    use-modified-dummies: true
+    cutoff_type: RF
+    cutoff: 12A
+    energy_frequency: 1ps
+    frame_frequency: 10ps
+    checkpoint_frequency: 10ps
+    integrator: langevin_middle
+    shift_delta: 1.5A
+    perturbable_constraint: h_bonds_not_heavy_perturbed
+    # "standard" used here for single-GPU test runs. For production with multiple
+    # GPUs, "repex" is preferred but requires enough VRAM for all lambda windows.
+    runner: standard
+    gpus_per_job: 1
+
+analysis-settings:
+  backend: cinnabar
+  experimental-results: workflow/inputs/exp_data_tyk2.dat
+  experimental-units: Ki_uM

@@ -1,0 +1,276 @@
+# Unified Snakefile for RBFE and ABFE free energy workflows.
+#
+# Usage:
+#   RBFE: snakemake -s workflow/Snakefile --configfile config/config_rbfe.yml
+#   ABFE: snakemake -s workflow/Snakefile --configfile config/config_abfe.yml
+#
+# The workflow method is determined by the "method" key in the config file:
+#   method: rbfe  (default)
+#   method: abfe
+
+from pathlib import Path
+import glob as glob_module
+
+
+# Load configuration
+# -----------------------------------------------------
+# No default configfile — user must specify --configfile on the command line:
+#   --configfile config/config_rbfe.yml  (RBFE)
+#   --configfile config/config_abfe.yml  (ABFE)
+
+# Determine workflow method and engine
+_method = config.get("method", "rbfe").strip().lower()
+_engine = config.get("engine", config["production-settings"].get("engine", "gromacs")).strip().lower()
+
+
+# Helper functions
+# -----------------------------------------------------
+def onstart(job):
+    print(f"Started: {job.rule}")
+
+def onsuccess(job):
+    print(f"Completed: {job.rule}")
+
+def onerror(job):
+    print(f"Failed: {job.rule}")
+    print(f"Wildcards: {job.wildcards}")
+    print(f"Log files: {job.log}")
+
+onstart: onstart
+onsuccess: onsuccess
+onerror: onerror
+
+
+# Glob ligand files
+# -----------------------------------------------------
+LIGAND_FILES = glob_module.glob(config["ligands"])
+LIGANDS = sorted([Path(f).stem for f in LIGAND_FILES])
+
+if not LIGANDS:
+    raise ValueError(
+        f"No ligand files found matching pattern: {config['ligands']}"
+    )
+
+
+# Method-specific helper functions
+# -----------------------------------------------------
+if _method == "rbfe":
+    def read_ligand_pairs(wildcards):
+        """Read the network file and return all required PMF paths for RBFE."""
+        import pandas as pd
+        legs = ["free", "bound"]
+        num_replicas = config["production-settings"]["num_replicas"]
+        input_file = Path(f"{config['working_directory']}/network/network.dat")
+        if not input_file.exists():
+            input_file = checkpoints.prep_network.get(**wildcards).output[0]
+        if not input_file.exists():
+            raise FileNotFoundError(f"Input file {input_file} does not exist.")
+        data = pd.read_csv(input_file, sep=r"\s+", names=["ligand1", "ligand2", "num_lambda", "lambda_windows"])
+        pairs = []
+        for replica_number in range(num_replicas):
+            for _, row in data.iterrows():
+                ligand1 = row["ligand1"]
+                ligand2 = row["ligand2"]
+                for leg in legs:
+                    pairs.append(f"{config['working_directory']}/analysis/{_engine}/{ligand1}~{ligand2}/{leg}_{replica_number}/pmf.csv")
+        return pairs
+
+
+elif _method == "abfe":
+    def get_all_analysis_files(wildcards):
+        """Return all PMF file paths needed for final ABFE analysis."""
+        num_replicas = config["production-settings"]["num_replicas"]
+        working_dir = config["working_directory"]
+        pmf_files = []
+        for ligand in LIGANDS:
+            for replica in range(num_replicas):
+                pmf_files.append(f"{working_dir}/analysis/{_engine}/{ligand}/bound_{replica}/pmf.csv")
+                pmf_files.append(f"{working_dir}/analysis/{_engine}/{ligand}/free_{replica}/pmf.csv")
+        return pmf_files
+
+
+# Shared rule includes
+# -----------------------------------------------------
+include: "rules/common.smk"
+include: "rules/ligprep.smk"
+include: "rules/mineq_stages_bound.smk"
+include: "rules/mineq_stages_free.smk"
+
+# Method-specific rule includes
+# -----------------------------------------------------
+if _method == "rbfe":
+    include: "rules/rbfe/network_prep.smk"
+    include: "rules/rbfe/prepare.smk"
+    include: "rules/rbfe/production.smk"
+    include: "rules/rbfe/analyse.smk"
+
+elif _method == "abfe":
+    include: "rules/abfe/restraint_search.smk"
+    if _engine == "somd2":
+        include: "rules/abfe/production_somd2.smk"
+    else:
+        include: "rules/abfe/prepare.smk"
+        include: "rules/abfe/production.smk"
+    include: "rules/abfe/analyse.smk"
+
+else:
+    raise ValueError(f"Unknown method '{_method}'. Must be 'rbfe' or 'abfe'.")
+
+
+# Target rules
+# -----------------------------------------------------
+if _method == "rbfe":
+    rule all:
+        input:
+            Path(f"{config['working_directory']}/analysis/{_engine}/final_simulation_results.csv")
+
+elif _method == "abfe":
+    rule all:
+        input:
+            Path(f"{config['working_directory']}/analysis/{_engine}/final_abfe_results.csv")
+
+
+# Utility rules
+# -----------------------------------------------------
+rule clean:
+    params:
+        working_dir = config["working_directory"]
+    shell:
+        """
+        echo "Cleaning workflow outputs..."
+        rm -rf {params.working_dir}
+        rm -rf .snakemake
+        echo "Clean complete."
+        """
+
+
+rule clean_analysis:
+    params:
+        analysis_dir = f"{config['working_directory']}/analysis/{_engine}"
+    shell:
+        """
+        echo "Cleaning analysis outputs for {_engine}..."
+        rm -rf {params.analysis_dir}
+        echo "Analysis clean complete."
+        """
+
+
+rule clean_production:
+    params:
+        production_dir = f"{config['working_directory']}/production/{_engine}",
+        analysis_dir = f"{config['working_directory']}/analysis/{_engine}"
+    shell:
+        """
+        echo "Cleaning production and analysis outputs for {_engine}..."
+        rm -rf {params.production_dir}
+        rm -rf {params.analysis_dir}
+        echo "Production clean complete."
+        """
+
+
+rule clean_equilibration:
+    params:
+        equilibration_dir = f"{config['working_directory']}/equilibration",
+        production_dir = f"{config['working_directory']}/production",
+        analysis_dir = f"{config['working_directory']}/analysis"
+    shell:
+        """
+        echo "Cleaning equilibration, production, and analysis outputs..."
+        rm -rf {params.equilibration_dir}
+        rm -rf {params.production_dir}
+        rm -rf {params.analysis_dir}
+        echo "Equilibration clean complete."
+        """
+
+
+# Status rules
+# -----------------------------------------------------
+if _method == "rbfe":
+    rule status:
+        """
+        Display the current RBFE workflow status.
+
+        Usage: snakemake -s workflow/Snakefile status
+        """
+        params:
+            script = Path("workflow/scripts/rbfe/status.py"),
+            working_dir = config["working_directory"],
+            num_replicas = config["production-settings"]["num_replicas"],
+            network_file = Path(f"{config['working_directory']}/network/network.dat"),
+            engine = _engine,
+        run:
+            shell(
+                f"python {params.script} "
+                f"--working-directory {params.working_dir} "
+                f"--network-file {params.network_file} "
+                f"--num-replicas {params.num_replicas} "
+                f"--engine {params.engine}"
+            )
+
+    rule results:
+        """
+        Display only the DDG results for completed RBFE edges.
+
+        Usage: snakemake -s workflow/Snakefile results
+        """
+        params:
+            script = Path("workflow/scripts/rbfe/status.py"),
+            working_dir = config["working_directory"],
+            num_replicas = config["production-settings"]["num_replicas"],
+            network_file = Path(f"{config['working_directory']}/network/network.dat"),
+            engine = _engine,
+        run:
+            shell(
+                f"python {params.script} "
+                f"--working-directory {params.working_dir} "
+                f"--network-file {params.network_file} "
+                f"--num-replicas {params.num_replicas} "
+                f"--engine {params.engine} "
+                f"--results-only"
+            )
+
+elif _method == "abfe":
+    rule status:
+        """
+        Display the current ABFE workflow status.
+
+        Usage: snakemake -s workflow/Snakefile status
+        """
+        params:
+            script = Path("workflow/scripts/abfe/status.py"),
+            working_dir = config["working_directory"],
+            num_replicas = config["production-settings"]["num_replicas"],
+            engine = _engine,
+        run:
+            import json
+            ligands_json = json.dumps(LIGANDS)
+            shell(
+                f"python {params.script} "
+                f"--working-directory {params.working_dir} "
+                f"--ligands '{ligands_json}' "
+                f"--num-replicas {params.num_replicas} "
+                f"--engine {params.engine}"
+            )
+
+    rule results:
+        """
+        Display only the binding free energy results for completed ABFE ligands.
+
+        Usage: snakemake -s workflow/Snakefile results
+        """
+        params:
+            script = Path("workflow/scripts/abfe/status.py"),
+            working_dir = config["working_directory"],
+            num_replicas = config["production-settings"]["num_replicas"],
+            engine = _engine,
+        run:
+            import json
+            ligands_json = json.dumps(LIGANDS)
+            shell(
+                f"python {params.script} "
+                f"--working-directory {params.working_dir} "
+                f"--ligands '{ligands_json}' "
+                f"--num-replicas {params.num_replicas} "
+                f"--engine {params.engine} "
+                f"--results-only"
+            )

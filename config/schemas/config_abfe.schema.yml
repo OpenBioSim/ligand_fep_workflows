@@ -1,0 +1,548 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ABFE Workflow Config Schema",
+  "description": "Schema for validating ABFE (Absolute Binding Free Energy) workflow configuration.",
+  "type": "object",
+  "properties": {
+    "method": {
+      "type": "string",
+      "enum": ["rbfe", "abfe"],
+      "default": "abfe",
+      "description": "Workflow method: rbfe (relative) or abfe (absolute)."
+    },
+    "ligands": {
+      "type": "string",
+      "description": "Glob pattern for ligand input files (SDF format)."
+    },
+    "protein_files": {
+      "type": "string",
+      "description": "Glob pattern for protein input files. Assumes coordinates and topology only."
+    },
+    "working_directory": {
+      "type": "string",
+      "description": "Working directory for all workflow outputs."
+    },
+    "simulation_threads": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Number of threads to use for simulations."
+    },
+    "setup_settings": {
+      "type": "object",
+      "properties": {
+        "ligand_forcefield": {
+          "type": "string",
+          "description": "Force field for ligand parameterisation (e.g., 'gaff2')."
+        },
+        "water_model": {
+          "type": "string",
+          "description": "Water model for solvation (e.g., 'tip3p')."
+        },
+        "ion_concentration": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Ion concentration in mol/L."
+        },
+        "box_length": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Box padding in nm."
+        },
+        "box_type": {
+          "type": "string",
+          "enum": ["cubic", "triclinic", "orthorhombic"],
+          "description": "Box geometry type."
+        }
+      },
+      "additionalProperties": false
+    },
+    "restraint_search_settings": {
+      "type": "object",
+      "properties": {
+        "search_runtime": {
+          "type": "string",
+          "pattern": "^[0-9]+(\\.[0-9]+)?(ps|ns)$",
+          "description": "Runtime for restraint search equilibration."
+        },
+        "temperature": {
+          "type": "string",
+          "pattern": "^[0-9]+(\\.[0-9]+)?(K)$",
+          "description": "Temperature for restraint search."
+        },
+        "method": {
+          "type": "string",
+          "enum": ["BSS"],
+          "description": "Method for restraint selection."
+        },
+        "restraint_type": {
+          "type": "string",
+          "enum": ["Boresch"],
+          "description": "Type of restraint to use."
+        }
+      },
+      "additionalProperties": false
+    },
+    "min/eq-stages-free": {
+      "type": "object",
+      "minProperties": 1,
+      "description": "Minimisation and equilibration stages for free leg.",
+      "patternProperties": {
+        "^minimisation[a-zA-Z0-9_]*$": {
+          "type": "object",
+          "properties": {
+            "engine": {
+              "type": "string",
+              "enum": ["gromacs"],
+              "description": "MD engine (currently only gromacs supported)."
+            },
+            "minimisation-steps": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "Number of minimisation steps."
+            },
+            "restraint-string": {
+              "type": "string",
+              "description": "Atoms to restrain (e.g., 'heavy', 'backbone', 'all')."
+            },
+            "restraint-indices": {
+              "type": "array",
+              "items": {"type": "integer", "minimum": 0},
+              "description": "Specific atom indices to restrain."
+            },
+            "restraint-force-constant": {
+              "type": "number",
+              "minimum": 0,
+              "description": "Force constant in kcal/(mol*A^2)."
+            }
+          },
+          "required": ["engine"],
+          "additionalProperties": false
+        },
+        "^equilibration[a-zA-Z0-9_]*$": {
+          "type": "object",
+          "properties": {
+            "engine": {
+              "type": "string",
+              "enum": ["gromacs"],
+              "description": "MD engine (currently only gromacs supported)."
+            },
+            "runtime": {
+              "type": "string",
+              "pattern": "^[0-9]+(\\.[0-9]+)?(ps|ns)$",
+              "description": "Simulation duration."
+            },
+            "timestep": {
+              "type": "string",
+              "pattern": "^[0-9]+(\\.[0-9]+)?(fs)$",
+              "description": "Integration timestep."
+            },
+            "temperature-start": {
+              "type": "string",
+              "pattern": "^[0-9]+(\\.[0-9]+)?(K)$",
+              "description": "Starting temperature for ramping."
+            },
+            "temperature-end": {
+              "type": "string",
+              "pattern": "^[0-9]+(\\.[0-9]+)?(K)$",
+              "description": "Ending temperature for ramping."
+            },
+            "temperature": {
+              "type": "string",
+              "pattern": "^[0-9]+(\\.[0-9]+)?(K)$",
+              "description": "Constant temperature (overrides start/end)."
+            },
+            "thermostat-time-constant": {
+              "type": "string",
+              "pattern": "^[0-9]+(\\.[0-9]+)?(ps|ns)$",
+              "description": "Thermostat coupling time constant."
+            },
+            "pressure": {
+              "type": "string",
+              "pattern": "^[0-9]+(\\.[0-9]+)?(bar|atm)$",
+              "description": "Pressure for NPT ensemble."
+            },
+            "restraint-string": {
+              "type": "string",
+              "description": "Atoms to restrain."
+            },
+            "restraint-indices": {
+              "type": "array",
+              "items": {"type": "integer", "minimum": 0},
+              "description": "Specific atom indices to restrain."
+            },
+            "restraint-force-constant": {
+              "type": "number",
+              "minimum": 0,
+              "description": "Force constant in kcal/(mol*A^2)."
+            }
+          },
+          "required": ["engine", "runtime"],
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "min/eq-stages-bound": {
+      "type": "object",
+      "minProperties": 1,
+      "description": "Minimisation and equilibration stages for bound leg.",
+      "patternProperties": {
+        "^minimisation[a-zA-Z0-9_]*$": {
+          "type": "object",
+          "properties": {
+            "engine": {
+              "type": "string",
+              "enum": ["gromacs"],
+              "description": "MD engine."
+            },
+            "minimisation-steps": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "Number of minimisation steps."
+            },
+            "restraint-string": {
+              "type": "string",
+              "description": "Atoms to restrain."
+            },
+            "restraint-indices": {
+              "type": "array",
+              "items": {"type": "integer", "minimum": 0},
+              "description": "Atom indices to restrain."
+            },
+            "restraint-force-constant": {
+              "type": "number",
+              "minimum": 0,
+              "description": "Force constant in kcal/(mol*A^2)."
+            }
+          },
+          "required": ["engine"],
+          "additionalProperties": false
+        },
+        "^equilibration[a-zA-Z0-9_]*$": {
+          "type": "object",
+          "properties": {
+            "engine": {
+              "type": "string",
+              "enum": ["gromacs"],
+              "description": "MD engine."
+            },
+            "runtime": {
+              "type": "string",
+              "pattern": "^[0-9]+(\\.[0-9]+)?(ps|ns)$",
+              "description": "Simulation duration."
+            },
+            "timestep": {
+              "type": "string",
+              "pattern": "^[0-9]+(\\.[0-9]+)?(fs)$",
+              "description": "Integration timestep."
+            },
+            "temperature-start": {
+              "type": "string",
+              "pattern": "^[0-9]+(\\.[0-9]+)?(K)$",
+              "description": "Starting temperature."
+            },
+            "temperature-end": {
+              "type": "string",
+              "pattern": "^[0-9]+(\\.[0-9]+)?(K)$",
+              "description": "Ending temperature."
+            },
+            "temperature": {
+              "type": "string",
+              "pattern": "^[0-9]+(\\.[0-9]+)?(K)$",
+              "description": "Constant temperature."
+            },
+            "thermostat-time-constant": {
+              "type": "string",
+              "pattern": "^[0-9]+(\\.[0-9]+)?(ps|ns)$",
+              "description": "Thermostat time constant."
+            },
+            "pressure": {
+              "type": "string",
+              "pattern": "^[0-9]+(\\.[0-9]+)?(bar|atm)$",
+              "description": "Pressure for NPT."
+            },
+            "restraint-string": {
+              "type": "string",
+              "description": "Atoms to restrain."
+            },
+            "restraint-indices": {
+              "type": "array",
+              "items": {"type": "integer", "minimum": 0},
+              "description": "Atom indices to restrain."
+            },
+            "restraint-force-constant": {
+              "type": "number",
+              "minimum": 0,
+              "description": "Force constant."
+            }
+          },
+          "required": ["engine", "runtime"],
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "production-settings": {
+      "type": "object",
+      "properties": {
+        "num_replicas": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Number of independent replicas."
+        },
+        "engine": {
+          "type": "string",
+          "description": "MD engine for production (gromacs or somd2, case-insensitive)."
+        },
+        "gromacs-settings": {
+          "type": "object",
+          "description": "GROMACS-specific production settings (used when engine: gromacs).",
+          "properties": {
+            "hmr_factor": {
+              "type": "number",
+              "minimum": 1,
+              "description": "Hydrogen mass repartitioning factor."
+            },
+            "lambda_schedules": {
+              "type": "object",
+              "description": "Unified lambda schedules for bound and free legs.",
+              "properties": {
+                "bound": {
+                  "type": "object",
+                  "description": "Lambda schedule for bound leg (bonded+coul+vdw).",
+                  "properties": {
+                    "bonded": {
+                      "type": "array",
+                      "items": {"type": "number", "minimum": 0, "maximum": 1},
+                      "description": "Bonded lambda values."
+                    },
+                    "coul": {
+                      "type": "array",
+                      "items": {"type": "number", "minimum": 0, "maximum": 1},
+                      "description": "Coulomb lambda values."
+                    },
+                    "vdw": {
+                      "type": "array",
+                      "items": {"type": "number", "minimum": 0, "maximum": 1},
+                      "description": "Van der Waals lambda values."
+                    }
+                  },
+                  "required": ["bonded", "coul", "vdw"],
+                  "additionalProperties": false
+                },
+                "free": {
+                  "type": "object",
+                  "description": "Lambda schedule for free leg (coul+vdw only).",
+                  "properties": {
+                    "coul": {
+                      "type": "array",
+                      "items": {"type": "number", "minimum": 0, "maximum": 1},
+                      "description": "Coulomb lambda values."
+                    },
+                    "vdw": {
+                      "type": "array",
+                      "items": {"type": "number", "minimum": 0, "maximum": 1},
+                      "description": "Van der Waals lambda values."
+                    }
+                  },
+                  "required": ["coul", "vdw"],
+                  "additionalProperties": false
+                }
+              },
+              "required": ["bound", "free"],
+              "additionalProperties": false
+            },
+            "free-leg-settings": {
+              "type": "object",
+              "properties": {
+                "runtime": {
+                  "type": "string",
+                  "pattern": "^[0-9]+(ps|ns)$",
+                  "description": "Production runtime per window."
+                },
+                "timestep": {
+                  "type": "string",
+                  "pattern": "^[0-9]+(fs)$",
+                  "description": "Integration timestep."
+                },
+                "temperature": {
+                  "type": "string",
+                  "pattern": "^[0-9]+(\\.[0-9]+)?(K)$",
+                  "description": "Simulation temperature."
+                },
+                "pressure": {
+                  "type": "string",
+                  "pattern": "^[0-9]+(\\.[0-9]+)?(bar|atm)$",
+                  "description": "Simulation pressure."
+                },
+                "report-interval": {
+                  "type": "string",
+                  "pattern": "^[0-9]+(\\.[0-9]+)?(fs|ps|ns)$",
+                  "description": "Energy reporting interval (e.g., '1ps'). Converted to steps internally."
+                },
+                "restart-interval": {
+                  "type": "string",
+                  "pattern": "^[0-9]+(\\.[0-9]+)?(fs|ps|ns)$",
+                  "description": "Checkpoint saving interval (e.g., '500ps'). Converted to steps internally."
+                }
+              },
+              "required": ["runtime"],
+              "additionalProperties": false
+            },
+            "bound-leg-settings": {
+              "type": "object",
+              "properties": {
+                "runtime": {
+                  "type": "string",
+                  "pattern": "^[0-9]+(ps|ns)$",
+                  "description": "Production runtime per window."
+                },
+                "timestep": {
+                  "type": "string",
+                  "pattern": "^[0-9]+(fs)$",
+                  "description": "Integration timestep."
+                },
+                "temperature": {
+                  "type": "string",
+                  "pattern": "^[0-9]+(\\.[0-9]+)?(K)$",
+                  "description": "Simulation temperature."
+                },
+                "pressure": {
+                  "type": "string",
+                  "pattern": "^[0-9]+(\\.[0-9]+)?(bar|atm)$",
+                  "description": "Simulation pressure."
+                },
+                "report-interval": {
+                  "type": "string",
+                  "pattern": "^[0-9]+(\\.[0-9]+)?(fs|ps|ns)$",
+                  "description": "Energy reporting interval (e.g., '1ps'). Converted to steps internally."
+                },
+                "restart-interval": {
+                  "type": "string",
+                  "pattern": "^[0-9]+(\\.[0-9]+)?(fs|ps|ns)$",
+                  "description": "Checkpoint saving interval (e.g., '500ps'). Converted to steps internally."
+                }
+              },
+              "required": ["runtime"],
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
+        },
+        "somd2-settings": {
+          "type": "object",
+          "description": "SOMD2-specific production settings (used when engine: SOMD2).",
+          "properties": {
+            "runtime": {
+              "type": "string",
+              "pattern": "^[0-9]+(ps|ns)$",
+              "description": "Production runtime per lambda window."
+            },
+            "timestep": {
+              "type": "string",
+              "pattern": "^[0-9]+(fs)$",
+              "description": "Integration timestep."
+            },
+            "temperature": {
+              "type": "string",
+              "pattern": "^[0-9]+(\\.[0-9]+)?(K)$",
+              "description": "Simulation temperature."
+            },
+            "cutoff_type": {
+              "type": "string",
+              "enum": ["PME", "RF"],
+              "description": "Electrostatics cutoff type."
+            },
+            "cutoff": {
+              "type": "string",
+              "description": "Cutoff distance (e.g. '10A')."
+            },
+            "num_lambda": {
+              "type": "integer",
+              "minimum": 2,
+              "description": "Number of lambda windows per stage."
+            },
+            "energy_frequency": {
+              "type": "string",
+              "pattern": "^[0-9]+(\\.[0-9]+)?(ps|ns)$",
+              "description": "Energy reporting interval."
+            },
+            "frame_frequency": {
+              "type": "string",
+              "pattern": "^[0-9]+(\\.[0-9]+)?(ps|ns)$",
+              "description": "Trajectory frame saving interval."
+            },
+            "checkpoint_frequency": {
+              "type": "string",
+              "pattern": "^[0-9]+(\\.[0-9]+)?(ps|ns)$",
+              "description": "Checkpoint saving interval."
+            },
+            "integrator": {
+              "type": "string",
+              "description": "Integrator type (e.g. 'langevin_middle')."
+            },
+            "shift_delta": {
+              "type": "string",
+              "description": "Soft-core shift delta (e.g. '2.25A')."
+            },
+            "perturbable_constraint": {
+              "type": "string",
+              "description": "Constraint type for perturbable molecules."
+            },
+            "equilibration_time": {
+              "type": "string",
+              "pattern": "^[0-9]+(\\.[0-9]+)?(ps|ns)$",
+              "description": "Per-lambda equilibration time before production."
+            },
+            "runner": {
+              "type": "string",
+              "enum": ["repex", "standard"],
+              "description": "Runner type: 'repex' (replica exchange) or 'standard'."
+            },
+            "gpus_per_job": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "Number of GPUs per production job (repex distributes replicas across GPUs)."
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "required": ["num_replicas"],
+      "additionalProperties": false
+    },
+    "analysis-settings": {
+      "type": "object",
+      "properties": {
+        "backend": {
+          "type": "string",
+          "enum": ["native", "cinnabar"],
+          "description": "Plotting backend."
+        },
+        "experimental-results": {
+          "type": "string",
+          "description": "Path to experimental results file."
+        },
+        "experimental-units": {
+          "type": "string",
+          "enum": ["Ki_uM", "kcal/mol", "kJ/mol"],
+          "description": "Units of experimental data."
+        }
+      },
+      "required": ["backend"],
+      "additionalProperties": false
+    }
+  },
+  "required": [
+    "ligands",
+    "protein_files",
+    "working_directory",
+    "simulation_threads",
+    "setup_settings",
+    "min/eq-stages-free",
+    "min/eq-stages-bound",
+    "production-settings",
+    "analysis-settings"
+  ],
+  "additionalProperties": true
+}
