@@ -9,7 +9,7 @@ Supports GROMACS and SOMD2 as production engines, with modular minimisation/equi
 ```bash
 # 1. Create and activate environment
 conda env create -f environment.yml
-conda activate workflow
+conda activate ligand_fep_workflows
 
 # 2. Run RBFE workflow
 snakemake -s workflow/Snakefile --configfile config/config_rbfe.yml \
@@ -28,7 +28,7 @@ Both workflows share a single `workflow/Snakefile` entry point. The `method` key
 
 ```bash
 conda env create -f environment.yml
-conda activate workflow
+conda activate ligand_fep_workflows
 ```
 
 This installs BioSimSpace, SOMD2/sire, GROMACS (with CUDA), Snakemake, AmberTools, and the SLURM executor plugin.

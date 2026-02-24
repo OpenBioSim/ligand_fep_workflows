@@ -1,4 +1,4 @@
-name: workflow
+name: ligand_fep_workflows
 channels:
   - conda-forge
   - bioconda
