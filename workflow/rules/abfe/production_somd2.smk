@@ -39,7 +39,8 @@ rule somd2_production_bound:
         restraint=Path(f"{config['working_directory']}/restraints")
         / "{ligand}_restraint.json",
         prev_replica=lambda wc: [] if int(wc.replica) == 0 else [
-            f"{config['working_directory']}/production/{_engine}/{wc.ligand}/bound_{int(wc.replica) - 1}/.done"
+            f"{config['working_directory']}/production/{_engine}/{wc.ligand}/bound_{int(wc.replica) - 1}/.done",
+            f"{config['working_directory']}/production/{_engine}/{wc.ligand}/free_{int(wc.replica) - 1}/.done",
         ],
     output:
         done=Path(
@@ -140,12 +141,13 @@ rule somd2_production_free:
     Replica N waits for replica N-1's production to complete,
     so all ligands get a first result before any starts a second replica.
     """
-    priority: 1
+    priority: 2
     input:
         system=Path(f"{config['working_directory']}/preparation/final")
         / "{ligand}_free.bss",
         prev_replica=lambda wc: [] if int(wc.replica) == 0 else [
-            f"{config['working_directory']}/production/{_engine}/{wc.ligand}/free_{int(wc.replica) - 1}/.done"
+            f"{config['working_directory']}/production/{_engine}/{wc.ligand}/bound_{int(wc.replica) - 1}/.done",
+            f"{config['working_directory']}/production/{_engine}/{wc.ligand}/free_{int(wc.replica) - 1}/.done",
         ],
     output:
         done=Path(

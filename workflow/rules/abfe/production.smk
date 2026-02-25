@@ -283,6 +283,10 @@ rule production_bound:
         eq_done=Path(
             f"{config['working_directory']}/equilibration/{{ligand}}/bound_{{replica}}/.done"
         ),
+        prev_replica=lambda wc: [] if int(wc.replica) == 0 else [
+            f"{config['working_directory']}/production/{_engine}/{wc.ligand}/bound_{int(wc.replica) - 1}/.done",
+            f"{config['working_directory']}/production/{_engine}/{wc.ligand}/free_{int(wc.replica) - 1}/.done",
+        ],
     output:
         done=Path(
             f"{config['working_directory']}/production/{_engine}/{{ligand}}/bound_{{replica}}/.done"
@@ -345,11 +349,15 @@ rule production_free:
     equilibrated system. Input files (MDP, topology) come from the
     equilibration directory; starting coordinates from NPT equilibration.
     """
-    priority: 1
+    priority: 2
     input:
         eq_done=Path(
             f"{config['working_directory']}/equilibration/{{ligand}}/free_{{replica}}/.done"
         ),
+        prev_replica=lambda wc: [] if int(wc.replica) == 0 else [
+            f"{config['working_directory']}/production/{_engine}/{wc.ligand}/bound_{int(wc.replica) - 1}/.done",
+            f"{config['working_directory']}/production/{_engine}/{wc.ligand}/free_{int(wc.replica) - 1}/.done",
+        ],
     output:
         done=Path(
             f"{config['working_directory']}/production/{_engine}/{{ligand}}/free_{{replica}}/.done"

@@ -107,7 +107,8 @@ rule production_bound:
     input:
         file = Path(f"{config['working_directory']}/rbfe_prepared/bound/{{ligand1}}~{{ligand2}}.bss"),
         prev_replica = lambda wc: [] if int(wc.replica_number) == 0 else [
-            f"{config['working_directory']}/production/{_engine}/{wc.ligand1}~{wc.ligand2}/bound_{int(wc.replica_number) - 1}/.done"
+            f"{config['working_directory']}/production/{_engine}/{wc.ligand1}~{wc.ligand2}/bound_{int(wc.replica_number) - 1}/.done",
+            f"{config['working_directory']}/production/{_engine}/{wc.ligand1}~{wc.ligand2}/free_{int(wc.replica_number) - 1}/.done",
         ],
     output:
         done = Path(f"{config['working_directory']}/production/{_engine}/{{ligand1}}~{{ligand2}}/bound_{{replica_number}}/.done")
@@ -126,11 +127,12 @@ rule production_bound:
 
 
 rule production_free:
-    priority: 1
+    priority: 2
     input:
         file = Path(f"{config['working_directory']}/rbfe_prepared/free/{{ligand1}}~{{ligand2}}.bss"),
         prev_replica = lambda wc: [] if int(wc.replica_number) == 0 else [
-            f"{config['working_directory']}/production/{_engine}/{wc.ligand1}~{wc.ligand2}/free_{int(wc.replica_number) - 1}/.done"
+            f"{config['working_directory']}/production/{_engine}/{wc.ligand1}~{wc.ligand2}/bound_{int(wc.replica_number) - 1}/.done",
+            f"{config['working_directory']}/production/{_engine}/{wc.ligand1}~{wc.ligand2}/free_{int(wc.replica_number) - 1}/.done",
         ],
     output:
         done = Path(f"{config['working_directory']}/production/{_engine}/{{ligand1}}~{{ligand2}}/free_{{replica_number}}/.done")
