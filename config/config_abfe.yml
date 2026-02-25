@@ -44,10 +44,6 @@ restraint_search_settings:
   search_runtime: "1ns"
   # Temperature for restraint search simulation
   temperature: "300K"
-  # Method for restraint selection: "BSS" (BioSimSpace built-in)
-  method: "BSS"
-  # Type of restraint: "Boresch" (6 DOF: 1 distance, 2 angles, 3 dihedrals)
-  restraint_type: "Boresch"
 
 # Minimisation and equilibration stages for FREE leg
 # --------------------------------------------------

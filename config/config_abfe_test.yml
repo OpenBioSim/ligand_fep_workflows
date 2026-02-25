@@ -31,8 +31,6 @@ setup_settings:
 restraint_search_settings:
   search_runtime: "10ps"
   temperature: "300K"
-  method: "BSS"
-  restraint_type: "Boresch"
 
 # Minimal min/eq for FREE leg
 min/eq-stages-free:
