@@ -237,14 +237,11 @@ def _get_gromacs_performance(prod_dir: Path) -> Optional[float]:
 
 
 def _get_somd2_performance(prod_dir: Path) -> Optional[float]:
-    """Extract total throughput in ns/day from a SOMD2 production directory."""
+    """Extract per-window ns/day from a SOMD2 production directory."""
     log_file = prod_dir / "log.txt"
     if not log_file.exists():
         return None
     try:
-        num_lambda = len(list(prod_dir.glob("energy_traj_*.parquet")))
-        if num_lambda == 0:
-            return None
         with open(log_file, "rb") as f:
             f.seek(0, 2)
             size = f.tell()
@@ -253,7 +250,7 @@ def _get_somd2_performance(prod_dir: Path) -> Optional[float]:
         for line in tail.splitlines():
             if "Overall performance:" in line:
                 parts = line.split("Overall performance:")[1].strip().split()
-                return float(parts[0]) * num_lambda
+                return float(parts[0])
     except (OSError, ValueError, IndexError):
         pass
     return None
