@@ -381,11 +381,6 @@ def main():
         runner = Runner(config=config, system=system)
         return runner
 
-    # Step 9: Clean up temporary AMBER files
-    for suffix in [".prm7", ".rst7"]:
-        temp_file = Path(str(amber_base) + suffix)
-        temp_file.unlink(missing_ok=True)
-
     print(f"\nSOMD2 production complete ({args.leg} leg)")
 
 
