@@ -228,20 +228,42 @@ def _check_production_complete(prod_dir: Path, engine: str) -> bool:
 
 
 def _get_somd2_performance(prod_dir: Path) -> Optional[float]:
-    """Extract per-window ns/day from a SOMD2 production directory."""
+    """Extract per-window ns/day from a SOMD2 production directory.
+
+    Searches backwards through the log so that re-runs with overwrite=True
+    (which append new output) don't obscure the timing from the original run.
+    Returns the last occurrence of 'Overall performance:'.
+    """
     log_file = prod_dir / "log.txt"
     if not log_file.exists():
         return None
+    chunk_size = 8192
+    target = b"Overall performance:"
     try:
         with open(log_file, "rb") as f:
             f.seek(0, 2)
             size = f.tell()
-            f.seek(max(0, size - 512))
-            tail = f.read().decode("utf-8", errors="replace")
-        for line in tail.splitlines():
-            if "Overall performance:" in line:
-                parts = line.split("Overall performance:")[1].strip().split()
-                return float(parts[0])
+            offset = size
+            carry = b""
+            while offset > 0:
+                read_size = min(chunk_size, offset)
+                offset -= read_size
+                f.seek(offset)
+                chunk = f.read(read_size) + carry
+                # Search for target in this chunk
+                pos = chunk.rfind(target)
+                if pos != -1:
+                    line_end = chunk.find(b"\n", pos)
+                    line = chunk[pos : line_end if line_end != -1 else None]
+                    parts = (
+                        line.decode("utf-8", errors="replace")
+                        .split("Overall performance:")[1]
+                        .strip()
+                        .split()
+                    )
+                    return float(parts[0])
+                # Carry the start of this chunk to avoid missing a match split across chunks
+                carry = chunk[: len(target) - 1]
     except (OSError, ValueError, IndexError):
         pass
     return None
