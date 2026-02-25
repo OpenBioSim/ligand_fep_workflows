@@ -132,6 +132,7 @@ production-settings:
     # GPUs, "repex" is preferred but requires enough VRAM for all lambda windows.
     runner: standard
     gpus_per_job: 3
+    perturbation_type: annihilate
 
 # Analysis settings (unchanged)
 analysis-settings:
