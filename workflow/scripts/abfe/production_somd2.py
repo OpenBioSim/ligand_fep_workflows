@@ -148,6 +148,13 @@ def parse_args() -> argparse.Namespace:
         default="repex",
         help="Runner type: 'repex' (replica exchange, default) or 'standard'.",
     )
+    parser.add_argument(
+        "--perturbation-type",
+        type=str,
+        choices=["annihilate", "decouple"],
+        default="annihilate",
+        help="Alchemical perturbation type: 'annihilate' (removes all non-bonded, default) or 'decouple' (removes only intermolecular).",
+    )
     return parser.parse_args()
 
 
@@ -245,19 +252,15 @@ def load_boresch_restraints(system, restraint_file: str, temperature: float):
     return sr.mm.BoreschRestraints(b)
 
 
-def build_lambda_schedule(decoupled_lig):
+def build_lambda_schedule_annihilate(decoupled_lig):
     """
-    Build the ABFE lambda schedule from the decoupled molecule.
+    Build the ABFE lambda schedule using decharge → annihilate.
 
-    Uses the decharge → annihilate approach:
+    Annihilation removes ALL non-bonded interactions (including intramolecular
+    LJ between non-bonded pairs), matching the GROMACS ABFE protocol.
+
     - Decharge: ramp charges off while ramping restraints on
-    - Annihilate: ramp vdW off with charges off and restraints on
-
-    Args:
-        decoupled_lig: Sire molecule with decoupling applied
-
-    Returns:
-        Lambda schedule object
+    - Annihilate: ramp vdW off (inter + intramolecular) with charges off
     """
     l = decoupled_lig.property("schedule")
 
@@ -296,6 +299,56 @@ def build_lambda_schedule(decoupled_lig):
     return l
 
 
+def build_lambda_schedule_decouple(decoupled_lig):
+    """
+    Build the ABFE lambda schedule using decharge → decouple.
+
+    Decoupling removes only INTERMOLECULAR non-bonded interactions; intramolecular
+    terms are preserved via kappa=0 on ghost/ghost and ghost-14 forces.
+
+    - Decharge: ramp charges off while ramping restraints on (kappa preserved)
+    - Decouple: ramp intermolecular vdW off with charges off and restraints on
+    """
+    l = decoupled_lig.property("schedule")
+
+    # Keep restraints at full strength during decouple stage
+    l.set_equation(stage="decouple", lever="restraint", equation=l.final())
+
+    # Avoid scaling kappa (intramolecular interactions) during decouple stage
+    l.set_equation(stage="decouple", lever="kappa", force="ghost/ghost", equation=0)
+    l.set_equation(stage="decouple", lever="kappa", force="ghost-14", equation=0)
+
+    # Charges stay off throughout decouple stage
+    l.set_equation(stage="decouple", lever="charge", equation=l.final())
+
+    # Prepend decharge stage before the existing decouple stage
+    l.prepend_stage("decharge", l.initial())
+    l.set_equation(
+        stage="decharge",
+        lever="charge",
+        equation=l.lam() * l.final() + l.initial() * (1 - l.lam()),
+    )
+    l.set_equation(stage="decharge", force="ghost/ghost", equation=l.initial())
+    l.set_equation(stage="decharge", force="ghost-14", equation=l.initial())
+    l.set_equation(
+        stage="decharge", lever="kappa", force="ghost/ghost", equation=-l.lam() + 1
+    )
+    l.set_equation(
+        stage="decharge", lever="kappa", force="ghost-14", equation=-l.lam() + 1
+    )
+    # Ramp restraints on during decharge
+    l.set_equation(stage="decharge", lever="restraint", equation=l.initial() * l.lam())
+
+    return l
+
+
+def build_lambda_schedule(decoupled_lig, perturbation_type: str = "annihilate"):
+    """Dispatch to the appropriate lambda schedule builder."""
+    if perturbation_type == "decouple":
+        return build_lambda_schedule_decouple(decoupled_lig)
+    return build_lambda_schedule_annihilate(decoupled_lig)
+
+
 def main():
     """Main entry point for SOMD2 ABFE production."""
     args = parse_args()
@@ -330,8 +383,8 @@ def main():
     system.update(lig)
 
     # Step 5: Build lambda schedule
-    print("Building lambda schedule (decharge → annihilate)...")
-    lam_schedule = build_lambda_schedule(lig)
+    print(f"Building lambda schedule (decharge → {args.perturbation_type})...")
+    lam_schedule = build_lambda_schedule(lig, args.perturbation_type)
 
     # Step 6: Set up Boresch restraints (bound leg only)
     # Parse temperature value for restraint correction

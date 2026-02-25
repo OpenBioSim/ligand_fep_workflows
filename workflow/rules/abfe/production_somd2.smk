@@ -98,6 +98,9 @@ rule somd2_production_bound:
         runner=lambda wc: config["production-settings"].get("somd2-settings", {}).get(
             "runner", "repex"
         ),
+        perturbation_type=lambda wc: config["production-settings"].get("somd2-settings", {}).get(
+            "perturbation_type", "annihilate"
+        ),
         output_directory=lambda wc: Path(
             f"{config['working_directory']}/production/{_engine}/{wc.ligand}/bound_{wc.replica}"
         ),
@@ -123,6 +126,7 @@ rule somd2_production_bound:
             --perturbable-constraint {params.perturbable_constraint} \
             --equilibration-time {params.equilibration_time} \
             --runner {params.runner} \
+            --perturbation-type {params.perturbation_type} \
             2>&1 | tee {log}
         touch {output.done}
         """
@@ -205,6 +209,9 @@ rule somd2_production_free:
         runner=lambda wc: config["production-settings"].get("somd2-settings", {}).get(
             "runner", "repex"
         ),
+        perturbation_type=lambda wc: config["production-settings"].get("somd2-settings", {}).get(
+            "perturbation_type", "annihilate"
+        ),
         output_directory=lambda wc: Path(
             f"{config['working_directory']}/production/{_engine}/{wc.ligand}/free_{wc.replica}"
         ),
@@ -229,6 +236,7 @@ rule somd2_production_free:
             --perturbable-constraint {params.perturbable_constraint} \
             --equilibration-time {params.equilibration_time} \
             --runner {params.runner} \
+            --perturbation-type {params.perturbation_type} \
             2>&1 | tee {log}
         touch {output.done}
         """

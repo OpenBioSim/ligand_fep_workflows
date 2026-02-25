@@ -238,6 +238,9 @@ production-settings:
     runner: repex
     # Number of GPUs per production job (repex distributes replicas across GPUs)
     gpus_per_job: 3
+    # Alchemical perturbation type: "annihilate" (removes all non-bonded interactions,
+    # consistent with GROMACS) or "decouple" (removes only intermolecular interactions).
+    perturbation_type: annihilate
 
 # Analysis settings
 # -----------------
