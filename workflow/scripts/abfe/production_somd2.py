@@ -420,6 +420,7 @@ def main():
         shift_delta=args.shift_delta,
         platform="CUDA",
         replica_exchange=(runner_type == "repex"),
+        overwrite=True,
     )
 
     # Step 8: Run SOMD2
