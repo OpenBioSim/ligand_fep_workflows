@@ -20,6 +20,30 @@ from pathlib import Path
 _engine = config.get("engine", config["production-settings"].get("engine", "gromacs")).strip().lower()
 
 
+# Replica barrier
+# ================
+#
+# Ensures ALL ligands complete both legs of replica N before any ligand
+# starts replica N+1. This guarantees at least one result per ligand
+# before any second replicas are run — prioritising results over throughput.
+
+rule replica_barrier:
+    input:
+        bound=lambda wc: expand(
+            f"{config['working_directory']}/production/{_engine}/{{ligand}}/bound_{wc.replica}/.done",
+            ligand=LIGANDS,
+        ),
+        free=lambda wc: expand(
+            f"{config['working_directory']}/production/{_engine}/{{ligand}}/free_{wc.replica}/.done",
+            ligand=LIGANDS,
+        ),
+    output:
+        touch(
+            Path(f"{config['working_directory']}/production/{_engine}/.replica_{{replica}}_barrier")
+        ),
+    priority: 3
+
+
 # Bound leg equilibration
 # =======================
 
@@ -40,7 +64,7 @@ rule equilibrate_bound:
         restraint=Path(f"{config['working_directory']}/restraints")
         / "{ligand}_restraint.json",
         prev_replica=lambda wc: [] if int(wc.replica) == 0 else [
-            f"{config['working_directory']}/production/{_engine}/{wc.ligand}/bound_{int(wc.replica) - 1}/.done"
+            f"{config['working_directory']}/production/{_engine}/.replica_{int(wc.replica) - 1}_barrier",
         ],
     output:
         done=Path(
@@ -163,7 +187,7 @@ rule equilibrate_free:
         system=Path(f"{config['working_directory']}/abfe_prepared")
         / "{ligand}_free.bss",
         prev_replica=lambda wc: [] if int(wc.replica) == 0 else [
-            f"{config['working_directory']}/production/{_engine}/{wc.ligand}/free_{int(wc.replica) - 1}/.done"
+            f"{config['working_directory']}/production/{_engine}/.replica_{int(wc.replica) - 1}_barrier",
         ],
     output:
         done=Path(
@@ -284,8 +308,7 @@ rule production_bound:
             f"{config['working_directory']}/equilibration/{{ligand}}/bound_{{replica}}/.done"
         ),
         prev_replica=lambda wc: [] if int(wc.replica) == 0 else [
-            f"{config['working_directory']}/production/{_engine}/{wc.ligand}/bound_{int(wc.replica) - 1}/.done",
-            f"{config['working_directory']}/production/{_engine}/{wc.ligand}/free_{int(wc.replica) - 1}/.done",
+            f"{config['working_directory']}/production/{_engine}/.replica_{int(wc.replica) - 1}_barrier",
         ],
     output:
         done=Path(
@@ -355,8 +378,7 @@ rule production_free:
             f"{config['working_directory']}/equilibration/{{ligand}}/free_{{replica}}/.done"
         ),
         prev_replica=lambda wc: [] if int(wc.replica) == 0 else [
-            f"{config['working_directory']}/production/{_engine}/{wc.ligand}/bound_{int(wc.replica) - 1}/.done",
-            f"{config['working_directory']}/production/{_engine}/{wc.ligand}/free_{int(wc.replica) - 1}/.done",
+            f"{config['working_directory']}/production/{_engine}/.replica_{int(wc.replica) - 1}_barrier",
         ],
     output:
         done=Path(

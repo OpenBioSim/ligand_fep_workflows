@@ -1,4 +1,16 @@
 from pathlib import Path
+import pandas as pd
+
+
+def _get_rbfe_pairs():
+    """Read all ligand pairs from the network file (requires network prep to have run)."""
+    network_file = Path(f"{config['working_directory']}/network/network.dat")
+    data = pd.read_csv(
+        str(network_file),
+        sep=r"\s+",
+        names=["ligand1", "ligand2", "num_lambda", "lambda_windows"],
+    )
+    return [f"{row['ligand1']}~{row['ligand2']}" for _, row in data.iterrows()]
 
 
 def create_python_script_call(wc, input, leg):
@@ -102,13 +114,36 @@ def _run_gromacs_stages(output_directory):
     shell(f"rm -rf {output_directory}/minimisation {output_directory}/heat {output_directory}/eq")
 
 
+# Replica barrier
+# ================
+#
+# Ensures ALL edges complete both legs of replica N before any edge starts
+# replica N+1. This guarantees at least one result per edge before additional
+# replicas are run — prioritising results over throughput.
+
+rule replica_barrier:
+    input:
+        bound=lambda wc: expand(
+            f"{config['working_directory']}/production/{_engine}/{{pair}}/bound_{wc.replica}/.done",
+            pair=_get_rbfe_pairs(),
+        ),
+        free=lambda wc: expand(
+            f"{config['working_directory']}/production/{_engine}/{{pair}}/free_{wc.replica}/.done",
+            pair=_get_rbfe_pairs(),
+        ),
+    output:
+        touch(
+            Path(f"{config['working_directory']}/production/{_engine}/.replica_{{replica}}_barrier")
+        ),
+    priority: 3
+
+
 rule production_bound:
     priority: 2
     input:
         file = Path(f"{config['working_directory']}/rbfe_prepared/bound/{{ligand1}}~{{ligand2}}.bss"),
         prev_replica = lambda wc: [] if int(wc.replica_number) == 0 else [
-            f"{config['working_directory']}/production/{_engine}/{wc.ligand1}~{wc.ligand2}/bound_{int(wc.replica_number) - 1}/.done",
-            f"{config['working_directory']}/production/{_engine}/{wc.ligand1}~{wc.ligand2}/free_{int(wc.replica_number) - 1}/.done",
+            f"{config['working_directory']}/production/{_engine}/.replica_{int(wc.replica_number) - 1}_barrier",
         ],
     output:
         done = Path(f"{config['working_directory']}/production/{_engine}/{{ligand1}}~{{ligand2}}/bound_{{replica_number}}/.done")
@@ -131,8 +166,7 @@ rule production_free:
     input:
         file = Path(f"{config['working_directory']}/rbfe_prepared/free/{{ligand1}}~{{ligand2}}.bss"),
         prev_replica = lambda wc: [] if int(wc.replica_number) == 0 else [
-            f"{config['working_directory']}/production/{_engine}/{wc.ligand1}~{wc.ligand2}/bound_{int(wc.replica_number) - 1}/.done",
-            f"{config['working_directory']}/production/{_engine}/{wc.ligand1}~{wc.ligand2}/free_{int(wc.replica_number) - 1}/.done",
+            f"{config['working_directory']}/production/{_engine}/.replica_{int(wc.replica_number) - 1}_barrier",
         ],
     output:
         done = Path(f"{config['working_directory']}/production/{_engine}/{{ligand1}}~{{ligand2}}/free_{{replica_number}}/.done")
