@@ -411,6 +411,13 @@ evaluations is `2 * num_lambda`.
     # For repex, increase this to accommodate the total memory required by all
     # lambda windows across both stages.
     gpus_per_job: 3
+
+    # Alchemical perturbation type.
+    # annihilate: removes all non-bonded interactions (inter- and intramolecular),
+    #             consistent with the GROMACS protocol. Default.
+    # decouple:   removes only intermolecular non-bonded interactions, preserving
+    #             intramolecular LJ terms via kappa=0 on ghost/ghost and ghost-14 forces.
+    perturbation_type: annihilate
 ```
 
 ---
