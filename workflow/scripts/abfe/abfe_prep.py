@@ -114,21 +114,21 @@ def decouple_ligand(
     ligand: BSS._SireWrappers.Molecule,
 ) -> BSS._SireWrappers.System:
     """
-    Mark the ligand for alchemical decoupling.
+    Mark the ligand for alchemical annihilation.
 
-    This uses BSS.Align.decouple() to mark the ligand for complete
-    decoupling from its environment. The decoupled ligand has its
-    intramolecular interactions preserved while intermolecular
-    interactions can be turned off via lambda scaling.
+    Uses BSS.Align.decouple() with the default intramol=True, which annihilates
+    the ligand: both inter- and intramolecular non-bonded interactions are scaled
+    with lambda. This sets couple-intramol=yes in the GROMACS MDP, consistent
+    with the SOMD2 annihilate schedule.
 
     Args:
         system: Complete system
-        ligand: Ligand molecule to decouple
+        ligand: Ligand molecule to annihilate
 
     Returns:
-        System with decoupled ligand
+        System with annihilated ligand
     """
-    print("Marking ligand for alchemical decoupling...")
+    print("Marking ligand for alchemical annihilation...")
 
     # Decouple the ligand
     decoupled_ligand = BSS.Align.decouple(ligand)
