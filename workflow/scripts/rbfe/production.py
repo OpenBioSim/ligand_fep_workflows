@@ -440,6 +440,7 @@ def main():
             perturbable_constraint=args.perturbable_constraint,
             hmr=False,  # HMR is applied in the pre-production step
             overwrite=True,  # Allow reruns without manual cleanup
+            restart=True,  # Allow restarting from checkpoints
             replica_exchange=(runner_type == "repex"),
         )
 

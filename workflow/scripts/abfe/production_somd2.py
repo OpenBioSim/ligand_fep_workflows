@@ -421,6 +421,7 @@ def main():
         platform="CUDA",
         replica_exchange=(runner_type == "repex"),
         overwrite=True,
+        restart=True,
     )
 
     # Step 8: Run SOMD2
