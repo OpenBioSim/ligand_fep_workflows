@@ -82,7 +82,7 @@ rule analyse_leg:
     shell:
         """
         echo "Analysing {wildcards.ligand} {wildcards.leg} replica {wildcards.replica}"
-        python {params.script} \
+        JAX_PLATFORMS=cpu python {params.script} \
             --input-directory {params.input_directory} \
             --output-directory {params.output_directory} \
             --engine {_engine} \
