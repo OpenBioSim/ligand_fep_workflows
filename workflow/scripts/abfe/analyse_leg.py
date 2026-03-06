@@ -20,7 +20,6 @@ Author: ABFE Workflow
 import argparse
 from pathlib import Path
 
-import BioSimSpace as BSS
 import matplotlib.colors as colors
 import matplotlib.pyplot as plt
 import numpy as np
@@ -54,6 +53,13 @@ def parse_args() -> argparse.Namespace:
         "--plot-pmf",
         action="store_true",
         help="Generate PMF plot.",
+    )
+    parser.add_argument(
+        "--engine",
+        type=str,
+        choices=["gromacs", "somd2"],
+        default="somd2",
+        help="Simulation engine used (determines BSS import).",
     )
     parser.add_argument(
         "--estimator",
@@ -183,6 +189,11 @@ def plot_overlap_matrix(
 def main():
     """Main entry point for leg analysis."""
     args = parse_args()
+
+    if args.engine == "gromacs":
+        import BioSimSpace.Sandpit.Exscientia as BSS
+    else:
+        import BioSimSpace as BSS
 
     input_dir = Path(args.input_directory)
     output_dir = Path(args.output_directory)

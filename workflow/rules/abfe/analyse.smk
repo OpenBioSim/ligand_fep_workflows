@@ -85,6 +85,7 @@ rule analyse_leg:
         python {params.script} \
             --input-directory {params.input_directory} \
             --output-directory {params.output_directory} \
+            --engine {_engine} \
             --temperature {params.temperature} \
             --plot-overlap-matrix \
             --plot-pmf \
