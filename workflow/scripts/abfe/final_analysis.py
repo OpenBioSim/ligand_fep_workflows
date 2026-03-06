@@ -5,7 +5,7 @@ ABFE final analysis script.
 This script collates results from ABFE legs and computes the absolute
 binding free energy for each ligand. The thermodynamic cycle is:
 
-    DG_bind = DG_free - DG_bound - DG_correction
+    DG_bind = DG_free - DG_bound + DG_correction
 
 Where DG_correction is the analytical Boresch restraint correction.
 
