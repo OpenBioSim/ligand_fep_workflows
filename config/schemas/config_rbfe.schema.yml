@@ -281,6 +281,11 @@
     "production-settings": {
       "type": "object",
       "properties": {
+        "restart": {
+          "type": "boolean",
+          "default": false,
+          "description": "Restart production from checkpoint (crash recovery or run extension). Run clean_for_restart.py first for extensions."
+        },
         "num_replicas": {
           "type": "integer",
           "minimum": 1,

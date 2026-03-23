@@ -140,7 +140,33 @@ snakemake -s workflow/Snakefile --configfile config/config_rbfe.yml results --co
 
 ## Min/Eq Protocol
 
-Minimisation and equilibration stages are fully configurable. Stages execute in the order defined in the config file and can be added or removed freely. The default protocol is based on [Roe & Brooks (2020)](https://doi.org/10.1063/5.0013849).
+Minimisation and equilibration stages are fully configurable. Stages execute in the order defined in the config file and can be added or removed freely. The default protocol is based on [Roe & Brooks (2020)](https://doi.org/10.1063/5.0013849), and includes a final density stabilisation stage: 500 ps NPT for the free (ligand-only) leg and 2 ns NPT for the bound (protein-ligand) leg, where the larger box volume requires longer equilibration.
+
+## Restarting and Extending Runs
+
+Production simulations can be restarted after a crash or extended beyond the original runtime using the `restart` option and the `clean_for_restart.py` helper script.
+
+### Crash recovery
+
+If a production job fails part-way through, set `restart: true` under `production-settings` and re-run Snakemake. The engines will resume from the last checkpoint.
+
+### Extending completed runs
+
+To increase the production runtime of a completed run (e.g. from 2 ns to 4 ns):
+
+1. Increase `runtime` in `production-settings` and set `restart: true`.
+2. Preview what will be removed:
+   ```bash
+   python workflow/scripts/clean_for_restart.py --config config/config_rbfe.yml --dry-run
+   ```
+3. Execute the cleanup:
+   ```bash
+   python workflow/scripts/clean_for_restart.py --config config/config_rbfe.yml
+   ```
+4. Re-run Snakemake — only production and analysis rules will execute; equilibration is untouched.
+5. After the run completes, set `restart: false` to prevent unintentional restarts.
+
+The cleanup script removes production `.done` markers, replica barrier files, and analysis outputs. It does **not** remove equilibration outputs. Pass `--help` for full usage.
 
 ## Useful Commands
 

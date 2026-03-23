@@ -149,6 +149,12 @@ def main():
         default="repex",
         help="Runner type for SOMD2: 'repex' (replica exchange, default) or 'standard' (independent windows).",
     )
+    parser.add_argument(
+        "--restart",
+        action="store_true",
+        default=False,
+        help="Restart from an existing checkpoint rather than starting fresh (SOMD2 only).",
+    )
 
     args = parser.parse_args()
 
@@ -440,7 +446,7 @@ def main():
             perturbable_constraint=args.perturbable_constraint,
             hmr=False,  # HMR is applied in the pre-production step
             overwrite=True,  # Allow reruns without manual cleanup
-            restart=True,  # Allow restarting from checkpoints
+            restart=args.restart,
             replica_exchange=(runner_type == "repex"),
         )
 

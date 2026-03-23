@@ -46,6 +46,8 @@ def create_python_script_call(wc, input, leg):
             args.append(f"--perturbable-constraint {cfg['perturbable_constraint']}")
         runner = cfg.get("runner", "repex")
         args.append(f"--runner {runner}")
+        if config["production-settings"].get("restart", False):
+            args.append("--restart")
     else:
         cfg = config["production-settings"]["gromacs-settings"][f"{leg}-leg-settings"]
         args.append(f"--runtime {cfg['runtime']}")
@@ -77,6 +79,24 @@ def create_python_script_call(wc, input, leg):
 
 def _run_gromacs_stages(output_directory):
     """Run GROMACS minimisation, heating, equilibration, and production stages."""
+    # Restart path: skip min/heat/eq and continue production from checkpoint.
+    # production.py (BSS setup_only) has already regenerated gromacs.mdp with
+    # the new nsteps before this function is called.
+    if config["production-settings"].get("restart", False):
+        prod_path = Path(output_directory)
+        lambda_values = sorted(
+            [d.name.split("_")[1] for d in prod_path.glob("lambda_*") if d.is_dir()],
+            key=float,
+        )
+        if lambda_values:
+            print("Restarting GROMACS production from checkpoint")
+            for lv in lambda_values:
+                d = prod_path / f"lambda_{lv}"
+                cpt_arg = f"-t {d}/gromacs.cpt" if (d / "gromacs.cpt").exists() else ""
+                shell(f"gmx grompp -f {d}/gromacs.mdp -c {d}/gromacs.gro {cpt_arg} -p {d}/gromacs.top -o {d}/gromacs.tpr 2>&1 | tee {d}/grompp.log")
+                shell(f"gmx mdrun -ntmpi 1 -deffnm {d}/gromacs 2>&1 | tee {d}/mdrun.log")
+            return
+
     outdir_path_min = Path(output_directory) / "minimisation"
     lambda_values = [d.name.split('_')[1] for d in outdir_path_min.glob("lambda_*") if d.is_dir()]
     if not lambda_values:

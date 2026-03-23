@@ -193,6 +193,11 @@ min/eq-stages-bound:
 # Production settings
 # -------------------
 production-settings:
+  # Restart production from checkpoint (e.g. to extend a completed run or
+  # recover from a crash). Controls restart=True/False for both GROMACS and
+  # SOMD2. For extensions, run clean_for_restart.py first to clear .done files.
+  restart: false
+
   # Number of independent replicas for error estimation
   num_replicas: 3
 

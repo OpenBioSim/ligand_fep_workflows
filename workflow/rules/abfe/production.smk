@@ -15,9 +15,28 @@ Each leg runs at multiple lambda values and for multiple replicas
 to estimate the free energy change and associated uncertainty.
 """
 
+import re as _re
 from pathlib import Path
 
 _engine = config.get("engine", config["production-settings"].get("engine", "gromacs")).strip().lower()
+
+
+def _calc_nsteps_abfe(leg: str) -> int:
+    """Calculate nsteps from config runtime and timestep for the given ABFE leg."""
+    import sire as sr
+    settings = config["production-settings"]["gromacs-settings"].get(
+        f"{leg}-leg-settings", {}
+    )
+    return int(sr.u(settings.get("runtime", "2ns")) / sr.u(settings.get("timestep", "4fs")))
+
+
+def _write_extended_mdp(src_mdp: Path, dest_mdp: Path, new_nsteps: int) -> None:
+    """Copy an MDP file to dest_mdp with updated nsteps and continuation flags."""
+    content = Path(src_mdp).read_text()
+    content = _re.sub(r"(?m)^nsteps\s*=.*", f"nsteps = {new_nsteps}", content)
+    content = _re.sub(r"(?m)^gen-vel\s*=.*", "gen-vel = no", content)
+    content = _re.sub(r"(?m)^continuation\s*=.*", "continuation = yes", content)
+    Path(dest_mdp).write_text(content)
 
 
 # Replica barrier
@@ -338,22 +357,36 @@ rule production_bound:
             raise FileNotFoundError(f"No lambda directories found in {eq_dir}")
         lambda_values.sort(key=float)
 
+        restart = config["production-settings"].get("restart", False)
         print(f"Running production for {len(lambda_values)} lambda windows")
         for lambda_value in lambda_values:
             lam_prod = prod_dir / f"lambda_{lambda_value}"
             lam_prod.mkdir(exist_ok=True)
 
             eq_setup_dir = eq_dir / f"lambda_{lambda_value}"
-            eq_gro = eq_dir / "eq" / f"lambda_{lambda_value}" / "gromacs.gro"
+            cpt_file = lam_prod / "gromacs.cpt"
+            gro_file = lam_prod / "gromacs.gro"
 
-            # Run grompp from eq setup directory (so topology includes resolve correctly)
-            # Output tpr goes to production directory
-            shell(
-                f"cd {eq_setup_dir} && "
-                f"gmx grompp -f gromacs.mdp -c {eq_gro} -p gromacs.top "
-                f"-o {lam_prod}/gromacs.tpr -maxwarn 1 "
-                f"> {lam_prod}/grompp.log 2>&1"
-            )
+            if restart and cpt_file.exists() and gro_file.exists():
+                # Extension: regenerate MDP with new nsteps and restart from checkpoint.
+                new_nsteps = _calc_nsteps_abfe("bound")
+                _write_extended_mdp(
+                    eq_setup_dir / "gromacs.mdp", lam_prod / "gromacs.mdp", new_nsteps
+                )
+                shell(
+                    f"cd {eq_setup_dir} && "
+                    f"gmx grompp -f {lam_prod}/gromacs.mdp -c {gro_file} -t {cpt_file} "
+                    f"-p gromacs.top -o {lam_prod}/gromacs.tpr -maxwarn 1 "
+                    f"> {lam_prod}/grompp.log 2>&1"
+                )
+            else:
+                eq_gro = eq_dir / "eq" / f"lambda_{lambda_value}" / "gromacs.gro"
+                shell(
+                    f"cd {eq_setup_dir} && "
+                    f"gmx grompp -f gromacs.mdp -c {eq_gro} -p gromacs.top "
+                    f"-o {lam_prod}/gromacs.tpr -maxwarn 1 "
+                    f"> {lam_prod}/grompp.log 2>&1"
+                )
             # Run mdrun from production directory (crash files stay contained)
             shell(f"cd {lam_prod} && gmx mdrun -ntmpi 1 -deffnm gromacs > mdrun.log 2>&1")
 
@@ -408,22 +441,36 @@ rule production_free:
             raise FileNotFoundError(f"No lambda directories found in {eq_dir}")
         lambda_values.sort(key=float)
 
+        restart = config["production-settings"].get("restart", False)
         print(f"Running production for {len(lambda_values)} lambda windows")
         for lambda_value in lambda_values:
             lam_prod = prod_dir / f"lambda_{lambda_value}"
             lam_prod.mkdir(exist_ok=True)
 
             eq_setup_dir = eq_dir / f"lambda_{lambda_value}"
-            eq_gro = eq_dir / "eq" / f"lambda_{lambda_value}" / "gromacs.gro"
+            cpt_file = lam_prod / "gromacs.cpt"
+            gro_file = lam_prod / "gromacs.gro"
 
-            # Run grompp from eq setup directory (so topology includes resolve correctly)
-            # Output tpr goes to production directory
-            shell(
-                f"cd {eq_setup_dir} && "
-                f"gmx grompp -f gromacs.mdp -c {eq_gro} -p gromacs.top "
-                f"-o {lam_prod}/gromacs.tpr -maxwarn 1 "
-                f"> {lam_prod}/grompp.log 2>&1"
-            )
+            if restart and cpt_file.exists() and gro_file.exists():
+                # Extension: regenerate MDP with new nsteps and restart from checkpoint.
+                new_nsteps = _calc_nsteps_abfe("free")
+                _write_extended_mdp(
+                    eq_setup_dir / "gromacs.mdp", lam_prod / "gromacs.mdp", new_nsteps
+                )
+                shell(
+                    f"cd {eq_setup_dir} && "
+                    f"gmx grompp -f {lam_prod}/gromacs.mdp -c {gro_file} -t {cpt_file} "
+                    f"-p gromacs.top -o {lam_prod}/gromacs.tpr -maxwarn 1 "
+                    f"> {lam_prod}/grompp.log 2>&1"
+                )
+            else:
+                eq_gro = eq_dir / "eq" / f"lambda_{lambda_value}" / "gromacs.gro"
+                shell(
+                    f"cd {eq_setup_dir} && "
+                    f"gmx grompp -f gromacs.mdp -c {eq_gro} -p gromacs.top "
+                    f"-o {lam_prod}/gromacs.tpr -maxwarn 1 "
+                    f"> {lam_prod}/grompp.log 2>&1"
+                )
             # Run mdrun from production directory (crash files stay contained)
             shell(f"cd {lam_prod} && gmx mdrun -ntmpi 1 -deffnm gromacs > mdrun.log 2>&1")
 

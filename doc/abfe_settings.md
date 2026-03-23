@@ -108,7 +108,10 @@ restraint_search_settings:
 
 These sections define the minimisation and equilibration protocol applied to the
 free-leg system (ligand in solvent) and the bound-leg system (protein-ligand
-complex) respectively.
+complex) respectively. The default protocol is based on
+[Roe & Brooks (2020)](https://doi.org/10.1063/5.0013849) and includes a final
+density stabilisation stage: 500 ps unrestrained NPT for the free leg and 2 ns
+for the bound leg.
 
 Each key must begin with `minimisation` or `equilibration` followed by any
 alphanumeric characters or underscores (e.g. `minimisation1`, `equilibration2`,
@@ -206,6 +209,15 @@ min/eq-stages-free:
     temperature: 300K
     pressure: 1bar
     thermostat-time-constant: 1ps  # No restraints — unrestrained NPT
+
+  # Density stabilisation: ligand-only systems equilibrate quickly; 500 ps is sufficient
+  equilibration5:
+    engine: gromacs
+    timestep: 2fs
+    runtime: 500ps
+    temperature: 300K
+    pressure: 1bar
+    thermostat-time-constant: 1ps
 ```
 
 ### Bound leg example
@@ -283,7 +295,17 @@ min/eq-stages-bound:
     runtime: 10ps
     temperature: 300K
     pressure: 1bar
-    thermostat-time-constant: 1ps # No restraints — final unrestrained NPT
+    thermostat-time-constant: 1ps # No restraints — unrestrained NPT
+
+  # Density stabilisation: protein systems require longer NPT runs for the box
+  # volume to converge; 2 ns is recommended
+  equilibration6:
+    engine: gromacs
+    timestep: 2fs
+    runtime: 2ns
+    temperature: 300K
+    pressure: 1bar
+    thermostat-time-constant: 1ps
 ```
 
 ---
@@ -304,6 +326,12 @@ production-settings:
 
   # Production MD engine. Options: somd2, gromacs (case-insensitive)
   engine: somd2
+
+  # Restart production from checkpoint (crash recovery or run extension).
+  # When true, GROMACS resumes from .cpt files and SOMD2 continues from
+  # its checkpoint state. Run clean_for_restart.py first to clear .done
+  # markers, then re-run Snakemake. Set back to false after completion.
+  restart: false
 ```
 
 ### GROMACS production settings
@@ -556,3 +584,22 @@ snakemake clean_production -s workflow/Snakefile --configfile config/config_abfe
    `{ligand}_correction.txt` is negative (approximately -10 to -12 kcal/mol
    for typical Boresch restraints). It is added to the calculated
    `DG_free - DG_bound` as shown in the formula above.
+
+9. **Density stabilisation**: The last min/eq stage for each leg is a long
+   unrestrained NPT run that allows the box volume to converge. For the free
+   (ligand-only) leg 500 ps is sufficient; for the bound (protein-ligand) leg
+   2 ns is recommended. Shortening these stages risks starting production at a
+   non-equilibrium density and can introduce systematic errors.
+
+10. **Restarting and extending runs**: Set `restart: true` under
+    `production-settings` to resume GROMACS production from checkpoint (`.cpt`)
+    files or to continue a SOMD2 run. This works for both crash recovery and
+    extending the runtime of a completed run. For extensions, first increase
+    `runtime`, then run:
+    ```bash
+    python workflow/scripts/clean_for_restart.py --config config/config_abfe.yml
+    ```
+    This clears production `.done` markers, replica barrier files, and analysis
+    outputs (but leaves equilibration outputs intact). Pass `--dry-run` first to
+    preview what will be removed. Set `restart: false` again after the run
+    completes.

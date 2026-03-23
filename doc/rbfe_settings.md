@@ -72,6 +72,8 @@ Two separate stage lists are required: one for the free (solvated ligand) leg an
 
 Supported engines for min/eq: `gromacs`, `openmm`, `amber`.
 
+The default protocol (in `config/config_rbfe.yml`) is based on [Roe & Brooks (2020)](https://doi.org/10.1063/5.0013849) and includes a final density stabilisation stage: a 500 ps unrestrained NPT run for the free leg, and a 2 ns unrestrained NPT run for the bound leg. These allow the simulation box volume to converge before production, which is especially important for protein-containing systems.
+
 ### min/eq-stages-free
 
 ```yaml
@@ -170,10 +172,12 @@ Controls production FEP simulations. Supported engines are `somd2` and `gromacs`
 production-settings:
   num_replicas: 3       # Independent replicas per perturbation/leg
   engine: somd2         # "somd2" or "gromacs" (case-insensitive)
+  restart: false        # Restart from checkpoint (crash recovery or run extension)
 ```
 
 - `num_replicas` sets the number of independent repeats for each perturbation leg. A minimum of 3 is recommended for meaningful error estimates.
 - The final reported error is the maximum of the propagated MBAR error and the standard deviation across replicas.
+- `restart`: when `true`, GROMACS resumes from checkpoint (`.cpt`) files and SOMD2 continues from its checkpoint state. Use this for both crash recovery and extending a completed run. Run `workflow/scripts/clean_for_restart.py` first to clear `.done` markers before re-running Snakemake. Set back to `false` after the run completes.
 
 ### SOMD2 Settings
 
@@ -364,3 +368,7 @@ All outputs are written under `working_directory` (e.g. `output/rbfe/`).
 **Replicas and error estimation**: Use at least 3 replicas (`num_replicas: 3`). The final reported uncertainty is the maximum of the propagated MBAR error and the standard deviation of the mean across replicas.
 
 **Production engine**: Only `somd2` and `gromacs` are supported for RBFE production. `amber` is available for minimisation and equilibration stages only.
+
+**Restarting and extending runs**: Set `restart: true` under `production-settings` to resume GROMACS production from checkpoint (`.cpt`) files or to continue a SOMD2 run from its checkpoint. This works for both crash recovery and extending the runtime of a completed run. For extensions, first increase `runtime`, then run `workflow/scripts/clean_for_restart.py --config config/config_rbfe.yml` to clear the old `.done` markers and analysis outputs, then re-run Snakemake. Pass `--dry-run` to the script first to preview what will be removed. Set `restart: false` again after the run completes to avoid unintentional reruns.
+
+**Density stabilisation**: The final min/eq stage(s) in the default protocol are long unrestrained NPT runs. These allow the simulation box volume to converge before production. For the free (ligand-only) leg, 500 ps is sufficient. For the bound (protein-ligand) leg, 2 ns is recommended. Shortening these stages risks starting production at a non-equilibrium density, which can introduce artefacts.

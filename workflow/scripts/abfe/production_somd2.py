@@ -155,6 +155,12 @@ def parse_args() -> argparse.Namespace:
         default="annihilate",
         help="Alchemical perturbation type: 'annihilate' (removes all non-bonded, default) or 'decouple' (removes only intermolecular).",
     )
+    parser.add_argument(
+        "--restart",
+        action="store_true",
+        default=False,
+        help="Restart from an existing checkpoint rather than starting fresh.",
+    )
     return parser.parse_args()
 
 
@@ -421,7 +427,7 @@ def main():
         platform="CUDA",
         replica_exchange=(runner_type == "repex"),
         overwrite=True,
-        restart=True,
+        restart=args.restart,
     )
 
     # Step 8: Run SOMD2
