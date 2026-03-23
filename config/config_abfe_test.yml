@@ -57,6 +57,13 @@ min/eq-stages-free:
     temperature: 300K
     pressure: 1bar
     thermostat-time-constant: 1ps
+  equilibration3:  # density stabilisation (minimal for testing)
+    engine: gromacs
+    timestep: 2fs
+    runtime: 10ps
+    temperature: 300K
+    pressure: 1bar
+    thermostat-time-constant: 1ps
 
 # Minimal min/eq for BOUND leg
 min/eq-stages-bound:
@@ -80,6 +87,13 @@ min/eq-stages-bound:
     engine: gromacs
     timestep: 2fs
     runtime: 2ps
+    temperature: 300K
+    pressure: 1bar
+    thermostat-time-constant: 1ps
+  equilibration3:  # density stabilisation (minimal for testing)
+    engine: gromacs
+    timestep: 2fs
+    runtime: 10ps
     temperature: 300K
     pressure: 1bar
     thermostat-time-constant: 1ps

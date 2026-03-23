@@ -101,6 +101,15 @@ min/eq-stages-free:
     temperature: 300K
     pressure: 1bar
     thermostat-time-constant: 1ps
+  # Step 10 from the paper: density stabilisation. For ligand-only systems
+  # density relaxes quickly; 500 ps is sufficient.
+  equilibration5:
+    engine: gromacs
+    timestep: 2fs
+    runtime: 500ps
+    temperature: 300K
+    pressure: 1bar
+    thermostat-time-constant: 1ps
 
 # Minimisation and equilibration stages for BOUND leg
 # ---------------------------------------------------
@@ -163,6 +172,15 @@ min/eq-stages-bound:
     engine: gromacs
     timestep: 2fs
     runtime: 10ps
+    temperature: 300K
+    pressure: 1bar
+    thermostat-time-constant: 1ps
+  # Step 10 from the paper: density stabilisation. Protein systems require
+  # longer NPT runs for the box volume to converge; 2 ns is recommended.
+  equilibration6:
+    engine: gromacs
+    timestep: 2fs
+    runtime: 2ns
     temperature: 300K
     pressure: 1bar
     thermostat-time-constant: 1ps
