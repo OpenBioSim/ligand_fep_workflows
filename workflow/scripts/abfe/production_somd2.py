@@ -156,6 +156,12 @@ def parse_args() -> argparse.Namespace:
         help="Alchemical perturbation type: 'annihilate' (removes all non-bonded, default) or 'decouple' (removes only intermolecular).",
     )
     parser.add_argument(
+        "--weighted-schedule",
+        action="store_true",
+        default=False,
+        help="Use weighted+overlapped lambda schedule (quadratic alpha ramp with overlap at stage boundary).",
+    )
+    parser.add_argument(
         "--restart",
         action="store_true",
         default=False,
@@ -305,6 +311,81 @@ def build_lambda_schedule_annihilate(decoupled_lig):
     return l
 
 
+def build_lambda_schedule_annihilate_weighted(decoupled_lig, alpha_min=0.1):
+    """
+    Build a weighted and overlapped ABFE lambda schedule using decharge → annihilate.
+
+    Two improvements over the plain annihilate schedule:
+
+    1. **Overlap**: alpha ramps from 0 → alpha_min during the decharge stage, so the
+       first LJ window already has partial softcore protection. The transition at the
+       stage boundary is continuous rather than a hard step from alpha=0 to alpha=0.
+
+    2. **Quadratic alpha weighting**: within the annihilate stage, alpha follows
+       ``alpha_min + lam^2 * (1 - alpha_min)`` rather than a linear ramp. This
+       concentrates lambda windows near the start of LJ scaling (low alpha, high
+       dH/dλ variance) and spreads them out at the end (high alpha, low variance).
+
+    These changes reduce the dH/dλ variance discontinuities at both the stage boundary
+    (λ=0.5 in the default 21-window schedule) and within the LJ stage, without
+    requiring a different softcore functional form.
+
+    Args:
+        decoupled_lig: Sire molecule with a "schedule" property (from sr.morph.decouple)
+        alpha_min: softcore alpha at the start of the annihilate stage and the end of
+                   the decharge stage (default 0.1). Must be in [0, 1).
+    """
+    l = decoupled_lig.property("schedule")
+
+    # Remove the default decouple stage
+    l.remove_stage("decouple")
+
+    # Stage 1: Decharge (remove electrostatics, ramp up restraints)
+    # Alpha ramps 0 → alpha_min so the stage boundary is already partially softened.
+    l.add_stage("decharge", equation=l.initial())
+    l.set_equation(
+        stage="decharge",
+        lever="charge",
+        equation=l.lam() * l.final() + l.initial() * (1 - l.lam()),
+    )
+    l.set_equation(
+        stage="decharge",
+        force="restraint",
+        equation=l.lam() * l.final(),
+    )
+    l.set_equation(
+        stage="decharge",
+        lever="alpha",
+        equation=l.lam() * alpha_min,
+    )
+
+    # Stage 2: Annihilate (remove vdW, charges stay off, restraints stay on)
+    # Quadratic alpha: alpha_min + lam^2 * (1 - alpha_min).
+    # At lam=0: alpha = alpha_min (matches end of decharge — continuous).
+    # At lam=1: alpha = 1.0 (fully soft ghost).
+    l.add_stage(
+        "annihilate",
+        equation=(-l.lam() + 1) * l.initial() + l.lam() * l.final(),
+    )
+    l.set_equation(
+        stage="annihilate",
+        lever="charge",
+        equation=l.final(),
+    )
+    l.set_equation(
+        stage="annihilate",
+        force="restraint",
+        equation=l.final(),
+    )
+    l.set_equation(
+        stage="annihilate",
+        lever="alpha",
+        equation=alpha_min + l.lam() * l.lam() * (1 - alpha_min),
+    )
+
+    return l
+
+
 def build_lambda_schedule_decouple(decoupled_lig):
     """
     Build the ABFE lambda schedule using decharge → decouple.
@@ -348,10 +429,95 @@ def build_lambda_schedule_decouple(decoupled_lig):
     return l
 
 
-def build_lambda_schedule(decoupled_lig, perturbation_type: str = "annihilate"):
-    """Dispatch to the appropriate lambda schedule builder."""
+def build_lambda_schedule_decouple_weighted(decoupled_lig, alpha_min=0.1):
+    """
+    Build a weighted and overlapped ABFE lambda schedule using decharge → decouple.
+
+    Applies the same two improvements as build_lambda_schedule_annihilate_weighted,
+    but for decoupling (intramolecular LJ preserved via kappa=0):
+
+    1. **Overlap**: alpha ramps 0 → alpha_min during the decharge stage so the first
+       decouple window already has partial softcore protection.
+
+    2. **Quadratic alpha weighting**: within the decouple stage, alpha follows
+       ``alpha_min + lam^2 * (1 - alpha_min)`` to concentrate lambda windows in the
+       low-alpha / high-variance region at the start of LJ scaling.
+
+    The kappa=0 equations (which preserve intramolecular LJ during decouple) are
+    unchanged relative to the plain decouple schedule.
+
+    Args:
+        decoupled_lig: Sire molecule with a "schedule" property (from sr.morph.decouple)
+        alpha_min: softcore alpha at the start of the decouple stage and the end of
+                   the decharge stage (default 0.1). Must be in [0, 1).
+    """
+    l = decoupled_lig.property("schedule")
+
+    # Keep restraints at full strength during decouple stage
+    l.set_equation(stage="decouple", lever="restraint", equation=l.final())
+
+    # Avoid scaling kappa (intramolecular interactions) during decouple stage
+    l.set_equation(stage="decouple", lever="kappa", force="ghost/ghost", equation=0)
+    l.set_equation(stage="decouple", lever="kappa", force="ghost-14", equation=0)
+
+    # Charges stay off throughout decouple stage
+    l.set_equation(stage="decouple", lever="charge", equation=l.final())
+
+    # Quadratic alpha within decouple: alpha_min + lam^2 * (1 - alpha_min).
+    # At lam=0: alpha = alpha_min (continuous with end of decharge).
+    # At lam=1: alpha = 1.0 (fully soft ghost).
+    l.set_equation(
+        stage="decouple",
+        lever="alpha",
+        equation=alpha_min + l.lam() * l.lam() * (1 - alpha_min),
+    )
+
+    # Prepend decharge stage before the existing decouple stage
+    l.prepend_stage("decharge", l.initial())
+    l.set_equation(
+        stage="decharge",
+        lever="charge",
+        equation=l.lam() * l.final() + l.initial() * (1 - l.lam()),
+    )
+    l.set_equation(stage="decharge", force="ghost/ghost", equation=l.initial())
+    l.set_equation(stage="decharge", force="ghost-14", equation=l.initial())
+    l.set_equation(
+        stage="decharge", lever="kappa", force="ghost/ghost", equation=-l.lam() + 1
+    )
+    l.set_equation(
+        stage="decharge", lever="kappa", force="ghost-14", equation=-l.lam() + 1
+    )
+    # Ramp restraints on during decharge
+    l.set_equation(stage="decharge", lever="restraint", equation=l.initial() * l.lam())
+    # Alpha ramps 0 → alpha_min during decharge (overlap with decouple stage)
+    l.set_equation(
+        stage="decharge",
+        lever="alpha",
+        equation=l.lam() * alpha_min,
+    )
+
+    return l
+
+
+def build_lambda_schedule(
+    decoupled_lig,
+    perturbation_type: str = "annihilate",
+    weighted: bool = False,
+):
+    """Dispatch to the appropriate lambda schedule builder.
+
+    Args:
+        decoupled_lig: Sire molecule with a "schedule" property.
+        perturbation_type: "annihilate" or "decouple".
+        weighted: if True and perturbation_type is "annihilate", use the
+                  weighted+overlapped schedule instead of the plain one.
+    """
     if perturbation_type == "decouple":
+        if weighted:
+            return build_lambda_schedule_decouple_weighted(decoupled_lig)
         return build_lambda_schedule_decouple(decoupled_lig)
+    if weighted:
+        return build_lambda_schedule_annihilate_weighted(decoupled_lig)
     return build_lambda_schedule_annihilate(decoupled_lig)
 
 
@@ -390,7 +556,9 @@ def main():
 
     # Step 5: Build lambda schedule
     print(f"Building lambda schedule (decharge → {args.perturbation_type})...")
-    lam_schedule = build_lambda_schedule(lig, args.perturbation_type)
+    lam_schedule = build_lambda_schedule(
+        lig, args.perturbation_type, weighted=args.weighted_schedule
+    )
 
     # Step 6: Set up Boresch restraints (bound leg only)
     # Parse temperature value for restraint correction

@@ -124,6 +124,9 @@ rule somd2_production_bound:
         perturbation_type=lambda wc: config["production-settings"].get("somd2-settings", {}).get(
             "perturbation_type", "annihilate"
         ),
+        weighted_schedule=config["production-settings"].get("somd2-settings", {}).get(
+            "weighted_schedule", False
+        ),
         restart=config["production-settings"].get("restart", False),
         output_directory=lambda wc: Path(
             f"{config['working_directory']}/production/{_engine}/{wc.ligand}/bound_{wc.replica}"
@@ -151,6 +154,7 @@ rule somd2_production_bound:
             --equilibration-time {params.equilibration_time} \
             --runner {params.runner} \
             --perturbation-type {params.perturbation_type} \
+            $([ "{params.weighted_schedule}" = "True" ] && echo "--weighted-schedule") \
             $([ "{params.restart}" = "True" ] && echo "--restart") \
             2>&1 | tee {log}
         touch {output.done}
@@ -236,6 +240,9 @@ rule somd2_production_free:
         perturbation_type=lambda wc: config["production-settings"].get("somd2-settings", {}).get(
             "perturbation_type", "annihilate"
         ),
+        weighted_schedule=config["production-settings"].get("somd2-settings", {}).get(
+            "weighted_schedule", False
+        ),
         restart=config["production-settings"].get("restart", False),
         output_directory=lambda wc: Path(
             f"{config['working_directory']}/production/{_engine}/{wc.ligand}/free_{wc.replica}"
@@ -262,6 +269,7 @@ rule somd2_production_free:
             --equilibration-time {params.equilibration_time} \
             --runner {params.runner} \
             --perturbation-type {params.perturbation_type} \
+            $([ "{params.weighted_schedule}" = "True" ] && echo "--weighted-schedule") \
             $([ "{params.restart}" = "True" ] && echo "--restart") \
             2>&1 | tee {log}
         touch {output.done}
