@@ -269,6 +269,10 @@ production-settings:
     # concentrating windows in the high-variance low-alpha region. Reduces dH/dλ
     # variance discontinuities at the stage boundary and within the LJ stage.
     weighted_schedule: false
+    # Hold epsilon at its real-atom value throughout the LJ stage, relying solely on
+    # the (1-alpha) prefactor (feature_beutler branch) to drive the LJ energy to zero.
+    # Gives true single (1-λ) scaling matching GROMACS Beutler. Only valid for ABFE.
+    constant_epsilon: false
 
 # Analysis settings
 # -----------------

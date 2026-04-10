@@ -162,6 +162,17 @@ def parse_args() -> argparse.Namespace:
         help="Use weighted+overlapped lambda schedule (quadratic alpha ramp with overlap at stage boundary).",
     )
     parser.add_argument(
+        "--constant-epsilon",
+        action="store_true",
+        default=False,
+        help=(
+            "Hold epsilon constant at its real-atom value in the LJ stage, relying solely "
+            "on the (1-alpha) prefactor (feature_beutler branch) to scale the LJ energy to "
+            "zero. Gives true single (1-lambda) scaling matching GROMACS Beutler. "
+            "Only valid for ABFE where ghost atoms exist in one state only."
+        ),
+    )
+    parser.add_argument(
         "--restart",
         action="store_true",
         default=False,
@@ -264,7 +275,7 @@ def load_boresch_restraints(system, restraint_file: str, temperature: float):
     return sr.mm.BoreschRestraints(b)
 
 
-def build_lambda_schedule_annihilate(decoupled_lig):
+def build_lambda_schedule_annihilate(decoupled_lig, constant_epsilon: bool = False):
     """
     Build the ABFE lambda schedule using decharge → annihilate.
 
@@ -273,6 +284,14 @@ def build_lambda_schedule_annihilate(decoupled_lig):
 
     - Decharge: ramp charges off while ramping restraints on
     - Annihilate: ramp vdW off (inter + intramolecular) with charges off
+
+    Args:
+        decoupled_lig: Sire molecule with a "schedule" property (from sr.morph.decouple)
+        constant_epsilon: if True, hold epsilon at its initial (real-atom) value
+            throughout the annihilate stage and rely solely on the (1-alpha) prefactor
+            (feature_beutler) to drive the LJ energy to zero. This gives true single
+            (1-λ) scaling, matching GROMACS Beutler. Only correct for ABFE where ghost
+            atoms exist in one state only. Default False (epsilon interpolated to zero).
     """
     l = decoupled_lig.property("schedule")
 
@@ -307,11 +326,19 @@ def build_lambda_schedule_annihilate(decoupled_lig):
         force="restraint",
         equation=l.final(),
     )
+    if constant_epsilon:
+        l.set_equation(
+            stage="annihilate",
+            lever="epsilon",
+            equation=l.initial(),
+        )
 
     return l
 
 
-def build_lambda_schedule_annihilate_weighted(decoupled_lig, alpha_min=0.1):
+def build_lambda_schedule_annihilate_weighted(
+    decoupled_lig, alpha_min=0.1, constant_epsilon: bool = False
+):
     """
     Build a weighted and overlapped ABFE lambda schedule using decharge → annihilate.
 
@@ -334,6 +361,9 @@ def build_lambda_schedule_annihilate_weighted(decoupled_lig, alpha_min=0.1):
         decoupled_lig: Sire molecule with a "schedule" property (from sr.morph.decouple)
         alpha_min: softcore alpha at the start of the annihilate stage and the end of
                    the decharge stage (default 0.1). Must be in [0, 1).
+        constant_epsilon: if True, hold epsilon constant at its initial (real-atom) value
+            throughout the annihilate stage. See build_lambda_schedule_annihilate for
+            details. Default False.
     """
     l = decoupled_lig.property("schedule")
 
@@ -382,11 +412,17 @@ def build_lambda_schedule_annihilate_weighted(decoupled_lig, alpha_min=0.1):
         lever="alpha",
         equation=alpha_min + l.lam() * l.lam() * (1 - alpha_min),
     )
+    if constant_epsilon:
+        l.set_equation(
+            stage="annihilate",
+            lever="epsilon",
+            equation=l.initial(),
+        )
 
     return l
 
 
-def build_lambda_schedule_decouple(decoupled_lig):
+def build_lambda_schedule_decouple(decoupled_lig, constant_epsilon: bool = False):
     """
     Build the ABFE lambda schedule using decharge → decouple.
 
@@ -395,6 +431,12 @@ def build_lambda_schedule_decouple(decoupled_lig):
 
     - Decharge: ramp charges off while ramping restraints on (kappa preserved)
     - Decouple: ramp intermolecular vdW off with charges off and restraints on
+
+    Args:
+        decoupled_lig: Sire molecule with a "schedule" property (from sr.morph.decouple)
+        constant_epsilon: if True, hold epsilon constant at its initial (real-atom) value
+            throughout the decouple stage. See build_lambda_schedule_annihilate for
+            details. Default False.
     """
     l = decoupled_lig.property("schedule")
 
@@ -425,11 +467,19 @@ def build_lambda_schedule_decouple(decoupled_lig):
     )
     # Ramp restraints on during decharge
     l.set_equation(stage="decharge", lever="restraint", equation=l.initial() * l.lam())
+    if constant_epsilon:
+        l.set_equation(
+            stage="decouple",
+            lever="epsilon",
+            equation=l.initial(),
+        )
 
     return l
 
 
-def build_lambda_schedule_decouple_weighted(decoupled_lig, alpha_min=0.1):
+def build_lambda_schedule_decouple_weighted(
+    decoupled_lig, alpha_min=0.1, constant_epsilon: bool = False
+):
     """
     Build a weighted and overlapped ABFE lambda schedule using decharge → decouple.
 
@@ -450,6 +500,9 @@ def build_lambda_schedule_decouple_weighted(decoupled_lig, alpha_min=0.1):
         decoupled_lig: Sire molecule with a "schedule" property (from sr.morph.decouple)
         alpha_min: softcore alpha at the start of the decouple stage and the end of
                    the decharge stage (default 0.1). Must be in [0, 1).
+        constant_epsilon: if True, hold epsilon constant at its initial (real-atom) value
+            throughout the decouple stage. See build_lambda_schedule_annihilate for
+            details. Default False.
     """
     l = decoupled_lig.property("schedule")
 
@@ -495,6 +548,12 @@ def build_lambda_schedule_decouple_weighted(decoupled_lig, alpha_min=0.1):
         lever="alpha",
         equation=l.lam() * alpha_min,
     )
+    if constant_epsilon:
+        l.set_equation(
+            stage="decouple",
+            lever="epsilon",
+            equation=l.initial(),
+        )
 
     return l
 
@@ -503,22 +562,34 @@ def build_lambda_schedule(
     decoupled_lig,
     perturbation_type: str = "annihilate",
     weighted: bool = False,
+    constant_epsilon: bool = False,
 ):
     """Dispatch to the appropriate lambda schedule builder.
 
     Args:
         decoupled_lig: Sire molecule with a "schedule" property.
         perturbation_type: "annihilate" or "decouple".
-        weighted: if True and perturbation_type is "annihilate", use the
-                  weighted+overlapped schedule instead of the plain one.
+        weighted: if True, use the weighted+overlapped schedule.
+        constant_epsilon: if True, hold epsilon at its real-atom value in the LJ
+            stage and rely on the (1-alpha) prefactor (feature_beutler) to scale
+            the energy. Gives true single (1-λ) scaling matching GROMACS Beutler.
+            Only valid for ABFE (ghosts in one state only). Default False.
     """
     if perturbation_type == "decouple":
         if weighted:
-            return build_lambda_schedule_decouple_weighted(decoupled_lig)
-        return build_lambda_schedule_decouple(decoupled_lig)
+            return build_lambda_schedule_decouple_weighted(
+                decoupled_lig, constant_epsilon=constant_epsilon
+            )
+        return build_lambda_schedule_decouple(
+            decoupled_lig, constant_epsilon=constant_epsilon
+        )
     if weighted:
-        return build_lambda_schedule_annihilate_weighted(decoupled_lig)
-    return build_lambda_schedule_annihilate(decoupled_lig)
+        return build_lambda_schedule_annihilate_weighted(
+            decoupled_lig, constant_epsilon=constant_epsilon
+        )
+    return build_lambda_schedule_annihilate(
+        decoupled_lig, constant_epsilon=constant_epsilon
+    )
 
 
 def main():
@@ -557,7 +628,10 @@ def main():
     # Step 5: Build lambda schedule
     print(f"Building lambda schedule (decharge → {args.perturbation_type})...")
     lam_schedule = build_lambda_schedule(
-        lig, args.perturbation_type, weighted=args.weighted_schedule
+        lig,
+        args.perturbation_type,
+        weighted=args.weighted_schedule,
+        constant_epsilon=args.constant_epsilon,
     )
 
     # Step 6: Set up Boresch restraints (bound leg only)
