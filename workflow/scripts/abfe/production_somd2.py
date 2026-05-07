@@ -6,9 +6,8 @@ This script runs alchemical free energy simulations for ABFE calculations
 using SOMD2 (sire/OpenMM). It handles:
     1. Loading the equilibrated system from BSS format
     2. Converting to sire and applying sire-native decoupling
-    3. Setting up the lambda schedule (decharge → annihilate)
-    4. Configuring Boresch restraints (bound leg only)
-    5. Running SOMD2 (minimisation + production)
+    3. Configuring Boresch restraints (bound leg only)
+    4. Running SOMD2 (minimisation + production)
 
 SOMD2 handles HMR internally with an OpenMM-appropriate factor,
 so no external HMR application is needed.
@@ -156,23 +155,6 @@ def parse_args() -> argparse.Namespace:
         help="Alchemical perturbation type: 'annihilate' (removes all non-bonded, default) or 'decouple' (removes only intermolecular).",
     )
     parser.add_argument(
-        "--weighted-schedule",
-        action="store_true",
-        default=False,
-        help="Use weighted+overlapped lambda schedule (quadratic alpha ramp with overlap at stage boundary).",
-    )
-    parser.add_argument(
-        "--constant-epsilon",
-        action="store_true",
-        default=False,
-        help=(
-            "Hold epsilon constant at its real-atom value in the LJ stage, relying solely "
-            "on the (1-alpha) prefactor (feature_beutler branch) to scale the LJ energy to "
-            "zero. Gives true single (1-lambda) scaling matching GROMACS Beutler. "
-            "Only valid for ABFE where ghost atoms exist in one state only."
-        ),
-    )
-    parser.add_argument(
         "--restart",
         action="store_true",
         default=False,
@@ -275,323 +257,6 @@ def load_boresch_restraints(system, restraint_file: str, temperature: float):
     return sr.mm.BoreschRestraints(b)
 
 
-def build_lambda_schedule_annihilate(decoupled_lig, constant_epsilon: bool = False):
-    """
-    Build the ABFE lambda schedule using decharge → annihilate.
-
-    Annihilation removes ALL non-bonded interactions (including intramolecular
-    LJ between non-bonded pairs), matching the GROMACS ABFE protocol.
-
-    - Decharge: ramp charges off while ramping restraints on
-    - Annihilate: ramp vdW off (inter + intramolecular) with charges off
-
-    Args:
-        decoupled_lig: Sire molecule with a "schedule" property (from sr.morph.decouple)
-        constant_epsilon: if True, hold epsilon at its initial (real-atom) value
-            throughout the annihilate stage and rely solely on the (1-alpha) prefactor
-            (feature_beutler) to drive the LJ energy to zero. This gives true single
-            (1-λ) scaling, matching GROMACS Beutler. Only correct for ABFE where ghost
-            atoms exist in one state only. Default False (epsilon interpolated to zero).
-    """
-    l = decoupled_lig.property("schedule")
-
-    # Remove the default decouple stage
-    l.remove_stage("decouple")
-
-    # Stage 1: Decharge (remove electrostatics, ramp up restraints)
-    l.add_stage("decharge", equation=l.initial())
-    l.set_equation(
-        stage="decharge",
-        lever="charge",
-        equation=l.lam() * l.final() + l.initial() * (1 - l.lam()),
-    )
-    l.set_equation(
-        stage="decharge",
-        force="restraint",
-        equation=l.lam() * l.final(),
-    )
-
-    # Stage 2: Annihilate (remove vdW, charges stay off, restraints stay on)
-    l.add_stage(
-        "annihilate",
-        equation=(-l.lam() + 1) * l.initial() + l.lam() * l.final(),
-    )
-    l.set_equation(
-        stage="annihilate",
-        lever="charge",
-        equation=l.final(),
-    )
-    l.set_equation(
-        stage="annihilate",
-        force="restraint",
-        equation=l.final(),
-    )
-    if constant_epsilon:
-        l.set_equation(
-            stage="annihilate",
-            lever="epsilon",
-            equation=l.initial(),
-        )
-
-    return l
-
-
-def build_lambda_schedule_annihilate_weighted(
-    decoupled_lig, alpha_min=0.1, constant_epsilon: bool = False
-):
-    """
-    Build a weighted and overlapped ABFE lambda schedule using decharge → annihilate.
-
-    Two improvements over the plain annihilate schedule:
-
-    1. **Overlap**: alpha ramps from 0 → alpha_min during the decharge stage, so the
-       first LJ window already has partial softcore protection. The transition at the
-       stage boundary is continuous rather than a hard step from alpha=0 to alpha=0.
-
-    2. **Quadratic alpha weighting**: within the annihilate stage, alpha follows
-       ``alpha_min + lam^2 * (1 - alpha_min)`` rather than a linear ramp. This
-       concentrates lambda windows near the start of LJ scaling (low alpha, high
-       dH/dλ variance) and spreads them out at the end (high alpha, low variance).
-
-    These changes reduce the dH/dλ variance discontinuities at both the stage boundary
-    (λ=0.5 in the default 21-window schedule) and within the LJ stage, without
-    requiring a different softcore functional form.
-
-    Args:
-        decoupled_lig: Sire molecule with a "schedule" property (from sr.morph.decouple)
-        alpha_min: softcore alpha at the start of the annihilate stage and the end of
-                   the decharge stage (default 0.1). Must be in [0, 1).
-        constant_epsilon: if True, hold epsilon constant at its initial (real-atom) value
-            throughout the annihilate stage. See build_lambda_schedule_annihilate for
-            details. Default False.
-    """
-    l = decoupled_lig.property("schedule")
-
-    # Remove the default decouple stage
-    l.remove_stage("decouple")
-
-    # Stage 1: Decharge (remove electrostatics, ramp up restraints)
-    # Alpha ramps 0 → alpha_min so the stage boundary is already partially softened.
-    l.add_stage("decharge", equation=l.initial())
-    l.set_equation(
-        stage="decharge",
-        lever="charge",
-        equation=l.lam() * l.final() + l.initial() * (1 - l.lam()),
-    )
-    l.set_equation(
-        stage="decharge",
-        force="restraint",
-        equation=l.lam() * l.final(),
-    )
-    l.set_equation(
-        stage="decharge",
-        lever="alpha",
-        equation=l.lam() * alpha_min,
-    )
-
-    # Stage 2: Annihilate (remove vdW, charges stay off, restraints stay on)
-    # Quadratic alpha: alpha_min + lam^2 * (1 - alpha_min).
-    # At lam=0: alpha = alpha_min (matches end of decharge — continuous).
-    # At lam=1: alpha = 1.0 (fully soft ghost).
-    l.add_stage(
-        "annihilate",
-        equation=(-l.lam() + 1) * l.initial() + l.lam() * l.final(),
-    )
-    l.set_equation(
-        stage="annihilate",
-        lever="charge",
-        equation=l.final(),
-    )
-    l.set_equation(
-        stage="annihilate",
-        force="restraint",
-        equation=l.final(),
-    )
-    l.set_equation(
-        stage="annihilate",
-        lever="alpha",
-        equation=alpha_min + l.lam() * l.lam() * (1 - alpha_min),
-    )
-    if constant_epsilon:
-        l.set_equation(
-            stage="annihilate",
-            lever="epsilon",
-            equation=l.initial(),
-        )
-
-    return l
-
-
-def build_lambda_schedule_decouple(decoupled_lig, constant_epsilon: bool = False):
-    """
-    Build the ABFE lambda schedule using decharge → decouple.
-
-    Decoupling removes only INTERMOLECULAR non-bonded interactions; intramolecular
-    terms are preserved via kappa=0 on ghost/ghost and ghost-14 forces.
-
-    - Decharge: ramp charges off while ramping restraints on (kappa preserved)
-    - Decouple: ramp intermolecular vdW off with charges off and restraints on
-
-    Args:
-        decoupled_lig: Sire molecule with a "schedule" property (from sr.morph.decouple)
-        constant_epsilon: if True, hold epsilon constant at its initial (real-atom) value
-            throughout the decouple stage. See build_lambda_schedule_annihilate for
-            details. Default False.
-    """
-    l = decoupled_lig.property("schedule")
-
-    # Keep restraints at full strength during decouple stage
-    l.set_equation(stage="decouple", lever="restraint", equation=l.final())
-
-    # Avoid scaling kappa (intramolecular interactions) during decouple stage
-    l.set_equation(stage="decouple", lever="kappa", force="ghost/ghost", equation=0)
-    l.set_equation(stage="decouple", lever="kappa", force="ghost-14", equation=0)
-
-    # Charges stay off throughout decouple stage
-    l.set_equation(stage="decouple", lever="charge", equation=l.final())
-
-    # Prepend decharge stage before the existing decouple stage
-    l.prepend_stage("decharge", l.initial())
-    l.set_equation(
-        stage="decharge",
-        lever="charge",
-        equation=l.lam() * l.final() + l.initial() * (1 - l.lam()),
-    )
-    l.set_equation(stage="decharge", force="ghost/ghost", equation=l.initial())
-    l.set_equation(stage="decharge", force="ghost-14", equation=l.initial())
-    l.set_equation(
-        stage="decharge", lever="kappa", force="ghost/ghost", equation=-l.lam() + 1
-    )
-    l.set_equation(
-        stage="decharge", lever="kappa", force="ghost-14", equation=-l.lam() + 1
-    )
-    # Ramp restraints on during decharge
-    l.set_equation(stage="decharge", lever="restraint", equation=l.initial() * l.lam())
-    if constant_epsilon:
-        l.set_equation(
-            stage="decouple",
-            lever="epsilon",
-            equation=l.initial(),
-        )
-
-    return l
-
-
-def build_lambda_schedule_decouple_weighted(
-    decoupled_lig, alpha_min=0.1, constant_epsilon: bool = False
-):
-    """
-    Build a weighted and overlapped ABFE lambda schedule using decharge → decouple.
-
-    Applies the same two improvements as build_lambda_schedule_annihilate_weighted,
-    but for decoupling (intramolecular LJ preserved via kappa=0):
-
-    1. **Overlap**: alpha ramps 0 → alpha_min during the decharge stage so the first
-       decouple window already has partial softcore protection.
-
-    2. **Quadratic alpha weighting**: within the decouple stage, alpha follows
-       ``alpha_min + lam^2 * (1 - alpha_min)`` to concentrate lambda windows in the
-       low-alpha / high-variance region at the start of LJ scaling.
-
-    The kappa=0 equations (which preserve intramolecular LJ during decouple) are
-    unchanged relative to the plain decouple schedule.
-
-    Args:
-        decoupled_lig: Sire molecule with a "schedule" property (from sr.morph.decouple)
-        alpha_min: softcore alpha at the start of the decouple stage and the end of
-                   the decharge stage (default 0.1). Must be in [0, 1).
-        constant_epsilon: if True, hold epsilon constant at its initial (real-atom) value
-            throughout the decouple stage. See build_lambda_schedule_annihilate for
-            details. Default False.
-    """
-    l = decoupled_lig.property("schedule")
-
-    # Keep restraints at full strength during decouple stage
-    l.set_equation(stage="decouple", lever="restraint", equation=l.final())
-
-    # Avoid scaling kappa (intramolecular interactions) during decouple stage
-    l.set_equation(stage="decouple", lever="kappa", force="ghost/ghost", equation=0)
-    l.set_equation(stage="decouple", lever="kappa", force="ghost-14", equation=0)
-
-    # Charges stay off throughout decouple stage
-    l.set_equation(stage="decouple", lever="charge", equation=l.final())
-
-    # Quadratic alpha within decouple: alpha_min + lam^2 * (1 - alpha_min).
-    # At lam=0: alpha = alpha_min (continuous with end of decharge).
-    # At lam=1: alpha = 1.0 (fully soft ghost).
-    l.set_equation(
-        stage="decouple",
-        lever="alpha",
-        equation=alpha_min + l.lam() * l.lam() * (1 - alpha_min),
-    )
-
-    # Prepend decharge stage before the existing decouple stage
-    l.prepend_stage("decharge", l.initial())
-    l.set_equation(
-        stage="decharge",
-        lever="charge",
-        equation=l.lam() * l.final() + l.initial() * (1 - l.lam()),
-    )
-    l.set_equation(stage="decharge", force="ghost/ghost", equation=l.initial())
-    l.set_equation(stage="decharge", force="ghost-14", equation=l.initial())
-    l.set_equation(
-        stage="decharge", lever="kappa", force="ghost/ghost", equation=-l.lam() + 1
-    )
-    l.set_equation(
-        stage="decharge", lever="kappa", force="ghost-14", equation=-l.lam() + 1
-    )
-    # Ramp restraints on during decharge
-    l.set_equation(stage="decharge", lever="restraint", equation=l.initial() * l.lam())
-    # Alpha ramps 0 → alpha_min during decharge (overlap with decouple stage)
-    l.set_equation(
-        stage="decharge",
-        lever="alpha",
-        equation=l.lam() * alpha_min,
-    )
-    if constant_epsilon:
-        l.set_equation(
-            stage="decouple",
-            lever="epsilon",
-            equation=l.initial(),
-        )
-
-    return l
-
-
-def build_lambda_schedule(
-    decoupled_lig,
-    perturbation_type: str = "annihilate",
-    weighted: bool = False,
-    constant_epsilon: bool = False,
-):
-    """Dispatch to the appropriate lambda schedule builder.
-
-    Args:
-        decoupled_lig: Sire molecule with a "schedule" property.
-        perturbation_type: "annihilate" or "decouple".
-        weighted: if True, use the weighted+overlapped schedule.
-        constant_epsilon: if True, hold epsilon at its real-atom value in the LJ
-            stage and rely on the (1-alpha) prefactor (feature_beutler) to scale
-            the energy. Gives true single (1-λ) scaling matching GROMACS Beutler.
-            Only valid for ABFE (ghosts in one state only). Default False.
-    """
-    if perturbation_type == "decouple":
-        if weighted:
-            return build_lambda_schedule_decouple_weighted(
-                decoupled_lig, constant_epsilon=constant_epsilon
-            )
-        return build_lambda_schedule_decouple(
-            decoupled_lig, constant_epsilon=constant_epsilon
-        )
-    if weighted:
-        return build_lambda_schedule_annihilate_weighted(
-            decoupled_lig, constant_epsilon=constant_epsilon
-        )
-    return build_lambda_schedule_annihilate(
-        decoupled_lig, constant_epsilon=constant_epsilon
-    )
-
-
 def main():
     """Main entry point for SOMD2 ABFE production."""
     args = parse_args()
@@ -611,7 +276,7 @@ def main():
     # Step 2: Convert to Sire format.
     system = sr.system.System(bss_system._sire_object)
 
-    # Step 4: Find the ligand and apply sire-native decoupling
+    # Step 3: Find the ligand and apply sire-native decoupling
     print("Applying sire-native decoupling...")
     lig = None
     for i in range(system.num_molecules()):
@@ -625,16 +290,7 @@ def main():
     lig = sr.morph.decouple(lig, as_new_molecule=False)
     system.update(lig)
 
-    # Step 5: Build lambda schedule
-    print(f"Building lambda schedule (decharge → {args.perturbation_type})...")
-    lam_schedule = build_lambda_schedule(
-        lig,
-        args.perturbation_type,
-        weighted=args.weighted_schedule,
-        constant_epsilon=args.constant_epsilon,
-    )
-
-    # Step 6: Set up Boresch restraints (bound leg only)
+    # Step 4: Set up Boresch restraints (bound leg only)
     # Parse temperature value for restraint correction
     temp_str = args.temperature
     temp_value = float("".join(c for c in temp_str if c.isdigit() or c == "."))
@@ -645,7 +301,9 @@ def main():
             system, args.restraint_file, temp_value
         )
 
-    # Step 7: Configure SOMD2
+    # Step 5: Configure SOMD2
+    # The lambda schedule and Beutler soft-core (with epsilon fixed) are handled
+    # natively by SOMD2 — no manual schedule construction needed.
     print("Configuring SOMD2...")
     runner_type = args.runner.strip().lower()
     config = Config(
@@ -659,7 +317,8 @@ def main():
         frame_frequency=args.frame_frequency,
         checkpoint_frequency=args.checkpoint_frequency,
         restraints=boresch_restraints,
-        lambda_schedule=lam_schedule,
+        lambda_schedule=args.perturbation_type,
+        softcore_form="beutler",
         perturbable_constraint=args.perturbable_constraint,
         output_directory=str(output_dir),
         minimise=True,
@@ -672,7 +331,7 @@ def main():
         restart=args.restart,
     )
 
-    # Step 8: Run SOMD2
+    # Step 6: Run SOMD2
     print(f"Running SOMD2 ({args.leg} leg, runner={args.runner})...")
     if runner_type == "repex":
         # RepexRunner uses threads, safe to call run() directly
