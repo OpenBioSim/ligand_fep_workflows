@@ -18,8 +18,10 @@ def runProcess(system, protocol, engine="gromacs", pmemd=False):
             process = BSS.Process.Amber(system, protocol, is_gpu=True)
 
     elif engine == "gromacs":
+        # -ntmpi is only valid for thread-MPI builds (gmx), not MPI builds (gmx_mpi)
+        extra_args = {} if BSS._gmx_exe.endswith("gmx_mpi") else {"-ntmpi": "1"}
         process = BSS.Process.Gromacs(
-            system, protocol, extra_args={"-ntmpi": "1"}, ignore_warnings=True
+            system, protocol, extra_args=extra_args, ignore_warnings=True
         )
 
     elif engine == "openmm":
