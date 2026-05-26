@@ -19,6 +19,8 @@ import re as _re
 from pathlib import Path
 
 _engine = config.get("engine", config["production-settings"].get("engine", "gromacs")).strip().lower()
+_gromacs_runner = config["production-settings"].get("gromacs-settings", {}).get("runner", "standard").strip().lower()
+_repex_frequency = config["production-settings"].get("gromacs-settings", {}).get("repex-frequency", 1000)
 
 
 def _calc_nsteps_abfe(leg: str) -> int:
@@ -145,6 +147,8 @@ rule equilibrate_bound:
             f"--pressure {params.pressure} "
             f"--report-interval {params.report_interval} "
             f"--restart-interval {params.restart_interval} "
+            f"--runner {_gromacs_runner} "
+            f"--repex-frequency {_repex_frequency} "
             f"2>&1 | tee {log}"
         )
 
@@ -267,6 +271,8 @@ rule equilibrate_free:
             f"--pressure {params.pressure} "
             f"--report-interval {params.report_interval} "
             f"--restart-interval {params.restart_interval} "
+            f"--runner {_gromacs_runner} "
+            f"--repex-frequency {_repex_frequency} "
             f"2>&1 | tee {log}"
         )
 
@@ -358,37 +364,65 @@ rule production_bound:
         lambda_values.sort(key=float)
 
         restart = config["production-settings"].get("restart", False)
-        print(f"Running production for {len(lambda_values)} lambda windows")
-        for lambda_value in lambda_values:
-            lam_prod = prod_dir / f"lambda_{lambda_value}"
-            lam_prod.mkdir(exist_ok=True)
+        print(f"Running production for {len(lambda_values)} lambda windows (runner={_gromacs_runner})")
 
-            eq_setup_dir = eq_dir / f"lambda_{lambda_value}"
-            cpt_file = lam_prod / "gromacs.cpt"
-            gro_file = lam_prod / "gromacs.gro"
-
-            if restart and cpt_file.exists() and gro_file.exists():
-                # Extension: regenerate MDP with new nsteps and restart from checkpoint.
-                new_nsteps = _calc_nsteps_abfe("bound")
-                _write_extended_mdp(
-                    eq_setup_dir / "gromacs.mdp", lam_prod / "gromacs.mdp", new_nsteps
-                )
-                shell(
-                    f"cd {eq_setup_dir} && "
-                    f"gmx grompp -f {lam_prod}/gromacs.mdp -c {gro_file} -t {cpt_file} "
-                    f"-p gromacs.top -o {lam_prod}/gromacs.tpr -maxwarn 1 "
-                    f"> {lam_prod}/grompp.log 2>&1"
-                )
-            else:
+        if _gromacs_runner == "repex":
+            # HREX production: all lambda windows run together under gmx mdrun -multidir.
+            # BSS (via GromacsHREX) has already written the shared topology to eq_dir/gromacs.top
+            # and per-lambda MDPs to eq_dir/lambda_*/gromacs.mdp.
+            # Re-run grompp for each lambda using equilibrated coordinates, putting the TPR
+            # in prod_dir/lambda_*/ so that the multidir run writes output there.
+            if restart:
+                raise NotImplementedError("Restart is not yet supported for GROMACS repex.")
+            top_file = eq_dir / "gromacs.top"
+            for lambda_value in lambda_values:
+                lam_prod = prod_dir / f"lambda_{lambda_value}"
+                lam_prod.mkdir(exist_ok=True)
                 eq_gro = eq_dir / "eq" / f"lambda_{lambda_value}" / "gromacs.gro"
+                mdp_file = eq_dir / f"lambda_{lambda_value}" / "gromacs.mdp"
                 shell(
-                    f"cd {eq_setup_dir} && "
-                    f"gmx grompp -f gromacs.mdp -c {eq_gro} -p gromacs.top "
+                    f"gmx grompp -f {mdp_file} -c {eq_gro} -p {top_file} "
                     f"-o {lam_prod}/gromacs.tpr -maxwarn 1 "
                     f"> {lam_prod}/grompp.log 2>&1"
                 )
-            # Run mdrun from production directory (crash files stay contained)
-            shell(f"cd {lam_prod} && gmx mdrun -ntmpi 1 -deffnm gromacs > mdrun.log 2>&1")
+            n_replicas = len(lambda_values)
+            lam_dirs = " ".join(str(prod_dir / f"lambda_{lv}") for lv in lambda_values)
+            shell(
+                f"cd {prod_dir} && gmx mdrun -ntmpi {n_replicas} -deffnm gromacs "
+                f"-c gromacs_out.gro -multidir {lam_dirs} -replex {_repex_frequency} "
+                f"> mdrun.log 2>&1"
+            )
+        else:
+            for lambda_value in lambda_values:
+                lam_prod = prod_dir / f"lambda_{lambda_value}"
+                lam_prod.mkdir(exist_ok=True)
+
+                eq_setup_dir = eq_dir / f"lambda_{lambda_value}"
+                cpt_file = lam_prod / "gromacs.cpt"
+                gro_file = lam_prod / "gromacs.gro"
+
+                if restart and cpt_file.exists() and gro_file.exists():
+                    # Extension: regenerate MDP with new nsteps and restart from checkpoint.
+                    new_nsteps = _calc_nsteps_abfe("bound")
+                    _write_extended_mdp(
+                        eq_setup_dir / "gromacs.mdp", lam_prod / "gromacs.mdp", new_nsteps
+                    )
+                    shell(
+                        f"cd {eq_setup_dir} && "
+                        f"gmx grompp -f {lam_prod}/gromacs.mdp -c {gro_file} -t {cpt_file} "
+                        f"-p gromacs.top -o {lam_prod}/gromacs.tpr -maxwarn 1 "
+                        f"> {lam_prod}/grompp.log 2>&1"
+                    )
+                else:
+                    eq_gro = eq_dir / "eq" / f"lambda_{lambda_value}" / "gromacs.gro"
+                    shell(
+                        f"cd {eq_setup_dir} && "
+                        f"gmx grompp -f gromacs.mdp -c {eq_gro} -p gromacs.top "
+                        f"-o {lam_prod}/gromacs.tpr -maxwarn 1 "
+                        f"> {lam_prod}/grompp.log 2>&1"
+                    )
+                # Run mdrun from production directory (crash files stay contained)
+                shell(f"cd {lam_prod} && gmx mdrun -ntmpi 1 -deffnm gromacs > mdrun.log 2>&1")
 
         # Mark as complete
         shell(f"touch {output.done}")
@@ -404,6 +438,7 @@ rule production_free:
     Runs GROMACS production MD for each lambda window using the
     equilibrated system. Input files (MDP, topology) come from the
     equilibration directory; starting coordinates from NPT equilibration.
+    When runner=repex, all lambda windows run together via gmx mdrun -multidir.
     """
     priority: 2
     input:
@@ -442,37 +477,60 @@ rule production_free:
         lambda_values.sort(key=float)
 
         restart = config["production-settings"].get("restart", False)
-        print(f"Running production for {len(lambda_values)} lambda windows")
-        for lambda_value in lambda_values:
-            lam_prod = prod_dir / f"lambda_{lambda_value}"
-            lam_prod.mkdir(exist_ok=True)
+        print(f"Running production for {len(lambda_values)} lambda windows (runner={_gromacs_runner})")
 
-            eq_setup_dir = eq_dir / f"lambda_{lambda_value}"
-            cpt_file = lam_prod / "gromacs.cpt"
-            gro_file = lam_prod / "gromacs.gro"
-
-            if restart and cpt_file.exists() and gro_file.exists():
-                # Extension: regenerate MDP with new nsteps and restart from checkpoint.
-                new_nsteps = _calc_nsteps_abfe("free")
-                _write_extended_mdp(
-                    eq_setup_dir / "gromacs.mdp", lam_prod / "gromacs.mdp", new_nsteps
-                )
-                shell(
-                    f"cd {eq_setup_dir} && "
-                    f"gmx grompp -f {lam_prod}/gromacs.mdp -c {gro_file} -t {cpt_file} "
-                    f"-p gromacs.top -o {lam_prod}/gromacs.tpr -maxwarn 1 "
-                    f"> {lam_prod}/grompp.log 2>&1"
-                )
-            else:
+        if _gromacs_runner == "repex":
+            if restart:
+                raise NotImplementedError("Restart is not yet supported for GROMACS repex.")
+            top_file = eq_dir / "gromacs.top"
+            for lambda_value in lambda_values:
+                lam_prod = prod_dir / f"lambda_{lambda_value}"
+                lam_prod.mkdir(exist_ok=True)
                 eq_gro = eq_dir / "eq" / f"lambda_{lambda_value}" / "gromacs.gro"
+                mdp_file = eq_dir / f"lambda_{lambda_value}" / "gromacs.mdp"
                 shell(
-                    f"cd {eq_setup_dir} && "
-                    f"gmx grompp -f gromacs.mdp -c {eq_gro} -p gromacs.top "
+                    f"gmx grompp -f {mdp_file} -c {eq_gro} -p {top_file} "
                     f"-o {lam_prod}/gromacs.tpr -maxwarn 1 "
                     f"> {lam_prod}/grompp.log 2>&1"
                 )
-            # Run mdrun from production directory (crash files stay contained)
-            shell(f"cd {lam_prod} && gmx mdrun -ntmpi 1 -deffnm gromacs > mdrun.log 2>&1")
+            n_replicas = len(lambda_values)
+            lam_dirs = " ".join(str(prod_dir / f"lambda_{lv}") for lv in lambda_values)
+            shell(
+                f"cd {prod_dir} && gmx mdrun -ntmpi {n_replicas} -deffnm gromacs "
+                f"-c gromacs_out.gro -multidir {lam_dirs} -replex {_repex_frequency} "
+                f"> mdrun.log 2>&1"
+            )
+        else:
+            for lambda_value in lambda_values:
+                lam_prod = prod_dir / f"lambda_{lambda_value}"
+                lam_prod.mkdir(exist_ok=True)
+
+                eq_setup_dir = eq_dir / f"lambda_{lambda_value}"
+                cpt_file = lam_prod / "gromacs.cpt"
+                gro_file = lam_prod / "gromacs.gro"
+
+                if restart and cpt_file.exists() and gro_file.exists():
+                    # Extension: regenerate MDP with new nsteps and restart from checkpoint.
+                    new_nsteps = _calc_nsteps_abfe("free")
+                    _write_extended_mdp(
+                        eq_setup_dir / "gromacs.mdp", lam_prod / "gromacs.mdp", new_nsteps
+                    )
+                    shell(
+                        f"cd {eq_setup_dir} && "
+                        f"gmx grompp -f {lam_prod}/gromacs.mdp -c {gro_file} -t {cpt_file} "
+                        f"-p gromacs.top -o {lam_prod}/gromacs.tpr -maxwarn 1 "
+                        f"> {lam_prod}/grompp.log 2>&1"
+                    )
+                else:
+                    eq_gro = eq_dir / "eq" / f"lambda_{lambda_value}" / "gromacs.gro"
+                    shell(
+                        f"cd {eq_setup_dir} && "
+                        f"gmx grompp -f gromacs.mdp -c {eq_gro} -p gromacs.top "
+                        f"-o {lam_prod}/gromacs.tpr -maxwarn 1 "
+                        f"> {lam_prod}/grompp.log 2>&1"
+                    )
+                # Run mdrun from production directory (crash files stay contained)
+                shell(f"cd {lam_prod} && gmx mdrun -ntmpi 1 -deffnm gromacs > mdrun.log 2>&1")
 
         # Mark as complete
         shell(f"touch {output.done}")

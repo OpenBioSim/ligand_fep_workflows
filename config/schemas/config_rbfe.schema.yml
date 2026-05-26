@@ -305,6 +305,18 @@
               "minimum": 1,
               "description": "Hydrogen mass repartitioning factor (3 recommended for 4fs timestep)."
             },
+            "runner": {
+              "type": "string",
+              "enum": ["repex", "standard"],
+              "default": "standard",
+              "description": "'repex' runs all lambda windows together via gmx mdrun -multidir with Hamiltonian replica exchange. 'standard' runs each lambda window independently (default)."
+            },
+            "repex-frequency": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1000,
+              "description": "Exchange attempt frequency in MD steps for GROMACS repex (default: 1000)."
+            },
             "free-leg-settings": {
               "type": "object",
               "properties": {
@@ -413,6 +425,57 @@
                   "pattern": "^[0-9]+(\\.[0-9]+)?(fs|ps|ns)$",
                   "description": "Checkpoint saving interval. Converted to steps internally."
                 }
+              },
+              "required": ["runtime"],
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
+        },
+        "amber-settings": {
+          "type": "object",
+          "description": "AMBER-specific production settings (used when engine: amber).",
+          "properties": {
+            "runner": {
+              "type": "string",
+              "enum": ["repex", "standard"],
+              "default": "standard",
+              "description": "'repex' runs Hamiltonian replica exchange via mpirun pmemd.MPI -rem 3. 'standard' runs each lambda window independently (default)."
+            },
+            "repex-frequency": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1000,
+              "description": "Exchange attempt frequency in MD steps for AMBER repex (default: 1000)."
+            },
+            "exe": {
+              "type": "string",
+              "description": "Path to the AMBER MPI executable (e.g. pmemd.MPI). Required when runner: repex."
+            },
+            "free-leg-settings": {
+              "type": "object",
+              "properties": {
+                "runtime": {"type": "string", "pattern": "^[0-9]+(\\.[0-9]+)?(ps|ns)$"},
+                "timestep": {"type": "string", "pattern": "^[0-9]+(\\.[0-9]+)?(fs)$"},
+                "temperature": {"type": "string", "pattern": "^[0-9]+(\\.[0-9]+)?(K)$"},
+                "pressure": {"type": "string", "pattern": "^[0-9]+(\\.[0-9]+)?(bar|atm)$"},
+                "use-modified-dummies": {"type": "boolean", "default": false},
+                "report-interval": {"type": "string", "pattern": "^[0-9]+(\\.[0-9]+)?(fs|ps|ns)$"},
+                "restart-interval": {"type": "string", "pattern": "^[0-9]+(\\.[0-9]+)?(fs|ps|ns)$"}
+              },
+              "required": ["runtime"],
+              "additionalProperties": false
+            },
+            "bound-leg-settings": {
+              "type": "object",
+              "properties": {
+                "runtime": {"type": "string", "pattern": "^[0-9]+(\\.[0-9]+)?(ps|ns)$"},
+                "timestep": {"type": "string", "pattern": "^[0-9]+(\\.[0-9]+)?(fs)$"},
+                "temperature": {"type": "string", "pattern": "^[0-9]+(\\.[0-9]+)?(K)$"},
+                "pressure": {"type": "string", "pattern": "^[0-9]+(\\.[0-9]+)?(bar|atm)$"},
+                "use-modified-dummies": {"type": "boolean", "default": false},
+                "report-interval": {"type": "string", "pattern": "^[0-9]+(\\.[0-9]+)?(fs|ps|ns)$"},
+                "restart-interval": {"type": "string", "pattern": "^[0-9]+(\\.[0-9]+)?(fs|ps|ns)$"}
               },
               "required": ["runtime"],
               "additionalProperties": false

@@ -111,6 +111,20 @@ def parse_args() -> argparse.Namespace:
         default="500ps",
         help="Checkpoint interval (e.g., '500ps'). Converted to steps using the timestep.",
     )
+    parser.add_argument(
+        "--runner",
+        type=str,
+        choices=["repex", "standard"],
+        default="standard",
+        help="Production runner: 'repex' (Hamiltonian replica exchange via gmx mdrun -multidir) "
+        "or 'standard' (independent per-lambda windows, default).",
+    )
+    parser.add_argument(
+        "--repex-frequency",
+        type=int,
+        default=1000,
+        help="Exchange attempt frequency in steps for GROMACS repex (default: 1000).",
+    )
     return parser.parse_args()
 
 
@@ -207,6 +221,8 @@ def setup_gromacs_abfe(
     pressure: BSS.Types.Pressure,
     report_interval: int,
     restart_interval: int,
+    runner: str = "standard",
+    repex_frequency: int = 1000,
 ) -> None:
     """
     Set up GROMACS ABFE simulations using BioSimSpace unified protocol.
@@ -231,6 +247,8 @@ def setup_gromacs_abfe(
         pressure: Simulation pressure
         report_interval: Steps between energy reports
         restart_interval: Steps between checkpoints
+        runner: 'repex' for HREX (gmx mdrun -multidir) or 'standard' for per-lambda runs
+        repex_frequency: Exchange attempt interval in steps (repex mode only)
     """
     print(f"Setting up GROMACS ABFE for {leg} leg (unified protocol)...")
     print(f"Lambda schedule ({len(lam_vals_df)} windows):\n{lam_vals_df}")
@@ -320,10 +338,15 @@ def setup_gromacs_abfe(
         report_interval=report_interval,
         restart_interval=restart_interval,
     )
+    use_repex = runner.strip().lower() == "repex"
+    if use_repex:
+        print(f"  Using HREX runner (repex_frequency={repex_frequency})")
     BSS.FreeEnergy.AlchemicalFreeEnergy(
         system,
         prod_protocol,
         engine="gromacs",
+        repex=use_repex,
+        repex_frequency=repex_frequency,
         work_dir=str(output_dir),
         restraint=restraint,
         setup_only=True,
@@ -391,6 +414,8 @@ def main():
         pressure=pressure,
         report_interval=report_interval,
         restart_interval=restart_interval,
+        runner=args.runner,
+        repex_frequency=args.repex_frequency,
     )
 
     print(f"\nABFE setup complete: {args.ligand_name} {args.leg}")
