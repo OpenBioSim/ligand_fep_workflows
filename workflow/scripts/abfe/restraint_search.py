@@ -147,9 +147,8 @@ def run_restraint_search_simulation(
         restraint=None,
     )
 
-    sim_dir = str(work_dir / "restraint_search_sim")
     process = BSS.Process.Gromacs(
-        system, protocol, work_dir=sim_dir, ignore_warnings=True
+        system, protocol, work_dir=str(work_dir), ignore_warnings=True
     )
     process.start()
     process.wait()
@@ -183,7 +182,7 @@ def analyse_restraints(
     print("Analysing trajectory for optimal restraint parameters...")
 
     return BSS.FreeEnergy.RestraintSearch.analyse(
-        work_dir=str(work_dir / "restraint_search_sim"),
+        work_dir=str(work_dir),
         system=system,
         traj=trajectory,
         temperature=temperature,
