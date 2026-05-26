@@ -146,8 +146,21 @@ def main():
         "--runner",
         type=str,
         choices=["repex", "standard"],
-        default="repex",
-        help="Runner type for SOMD2: 'repex' (replica exchange, default) or 'standard' (independent windows).",
+        default="standard",
+        help="Runner type: 'repex' (Hamiltonian replica exchange) or 'standard' (independent windows, default). "
+        "The Snakemake workflow overrides this per-engine via config.",
+    )
+    parser.add_argument(
+        "--repex-frequency",
+        type=int,
+        default=1000,
+        help="Exchange attempt frequency in steps for GROMACS/AMBER replica exchange (default: 1000).",
+    )
+    parser.add_argument(
+        "--amber-exe",
+        type=str,
+        default=None,
+        help="Path to the AMBER MPI executable (e.g. pmemd.MPI) required for AMBER repex.",
     )
     parser.add_argument(
         "--restart",
@@ -228,6 +241,8 @@ def main():
 
     # Now split into three - one for amber and somd, another for gromacs, and a third for somd2.
     engine = args.engine.strip().lower()
+    runner = args.runner.strip().lower()
+    repex_frequency = args.repex_frequency
     working_dir = str(Path(args.output_directory))
     if engine not in ["somd2", "gromacs"]:
 
@@ -266,13 +281,28 @@ def main():
             force_constant=force_constant,
         )
         if engine == "amber":
-            process_production = BSS.FreeEnergy.Relative(
-                system,
-                protocol,
-                engine="amber",
-                work_dir=working_dir,
-                is_gpu=True,
-            )
+            if runner == "repex":
+                if args.amber_exe is None:
+                    raise ValueError(
+                        "AMBER repex requires --amber-exe pointing to pmemd.MPI."
+                    )
+                process_production = BSS.FreeEnergy.Relative(
+                    system,
+                    protocol,
+                    engine="amber",
+                    repex=True,
+                    repex_frequency=repex_frequency,
+                    exe=args.amber_exe,
+                    work_dir=working_dir,
+                )
+            else:
+                process_production = BSS.FreeEnergy.Relative(
+                    system,
+                    protocol,
+                    engine="amber",
+                    work_dir=working_dir,
+                    is_gpu=True,
+                )
         elif engine == "somd":
             process_production = BSS.FreeEnergy.Relative(
                 system,
@@ -379,6 +409,8 @@ def main():
             system,
             protocol_production,
             engine="gromacs",
+            repex=(runner == "repex"),
+            repex_frequency=repex_frequency,
             work_dir=working_dir,
             extra_args={
                 "-ntmpi": "1",

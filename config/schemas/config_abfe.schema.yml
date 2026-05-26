@@ -298,6 +298,18 @@
               "minimum": 1,
               "description": "Hydrogen mass repartitioning factor."
             },
+            "runner": {
+              "type": "string",
+              "enum": ["repex", "standard"],
+              "default": "standard",
+              "description": "'repex' runs all lambda windows together via gmx mdrun -multidir with Hamiltonian replica exchange. 'standard' runs each lambda window independently (default)."
+            },
+            "repex-frequency": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1000,
+              "description": "Exchange attempt frequency in MD steps for GROMACS repex (default: 1000)."
+            },
             "lambda_schedules": {
               "type": "object",
               "description": "Unified lambda schedules for bound and free legs.",
