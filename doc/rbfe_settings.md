@@ -166,12 +166,12 @@ When both `temperature-start` and `temperature-end` are set, a linear temperatur
 
 ## production-settings
 
-Controls production FEP simulations. Supported engines are `somd2` and `gromacs`. Amber is not supported for RBFE production.
+Controls production FEP simulations. Supported engines are `somd2`, `gromacs`, and `amber`.
 
 ```yaml
 production-settings:
   num_replicas: 3       # Independent replicas per perturbation/leg
-  engine: somd2         # "somd2" or "gromacs" (case-insensitive)
+  engine: somd2         # "somd2", "gromacs", or "amber" (case-insensitive)
   restart: false        # Restart from checkpoint (crash recovery or run extension)
 ```
 
@@ -262,7 +262,56 @@ Key GROMACS options:
 - `lambda_schedules`: Defines how bonded, coulomb, and vdW interactions are scaled across lambda windows for each leg. All lists within a schedule must have the same length. The bound leg can include a `bonded` schedule; the free leg typically does not.
 - `report-interval` and `restart-interval` are specified in time units and converted to steps internally based on the timestep.
 - `use-modified-dummies`: Same ghostly library corrections as SOMD2. Recommended for most perturbations.
+- `runner`: `repex` enables Hamiltonian replica exchange (HREX) using `gmx mdrun -multidir -replex`. `standard` (default) runs each lambda window independently.
+- `repex-frequency`: Number of MD steps between replica exchange attempts (default: 1000). Only used when `runner: repex`.
 - Free and bound legs can have different runtimes if needed.
+
+#### GROMACS HREX (Hamiltonian Replica Exchange)
+
+When `runner: repex`, all lambda windows are run together in a single `gmx mdrun -multidir -replex` invocation. Minimisation and equilibration always run per-window independently; only the production step uses multidir. GROMACS thread-MPI is used (`-ntmpi N`, where N is the number of lambda windows), so no MPI installation is required — this is suitable for a single workstation with multiple GPUs or CPU cores.
+
+```yaml
+  gromacs-settings:
+    runner: repex           # "repex" or "standard" (default: standard)
+    repex-frequency: 1000   # Steps between exchange attempts (default: 1000)
+```
+
+### AMBER Settings
+
+Used when `engine: amber`.
+
+```yaml
+production-settings:
+  num_replicas: 3
+  engine: amber
+
+  amber-settings:
+    runner: repex           # "repex" or "standard" (default: standard)
+    repex-frequency: 1000   # Steps between exchange attempts (repex only)
+    exe: /path/to/pmemd.MPI # Required for repex; must point to the MPI-enabled pmemd binary
+
+    free-leg-settings:
+      runtime: 2ns
+      timestep: 2fs
+      temperature: 300K
+      pressure: 1bar
+      report-interval: 1000   # Steps between energy output writes
+      restart-interval: 10000 # Steps between checkpoint writes
+
+    bound-leg-settings:
+      runtime: 2ns
+      timestep: 2fs
+      temperature: 300K
+      pressure: 1bar
+      report-interval: 1000
+      restart-interval: 10000
+```
+
+Key AMBER options:
+
+- `runner`: `repex` runs HREX using `mpirun pmemd.MPI -rem 3 -ng N -groupfile groupfile`. `standard` runs each lambda window with GPU-accelerated `pmemd.cuda`.
+- `exe`: Path to the MPI-enabled pmemd binary (e.g. `/usr/local/amber/bin/pmemd.MPI`). Required when `runner: repex`; ignored for `standard`.
+- `repex-frequency`: Steps between Hamiltonian replica exchange attempts. Only used when `runner: repex`.
 
 ---
 
@@ -361,13 +410,17 @@ All outputs are written under `working_directory` (e.g. `output/rbfe/`).
 
 **SOMD2 runner**: `repex` performs replica exchange Monte Carlo moves between lambda windows. It allocates one OpenMM context per window at startup, so total GPU VRAM must be sufficient to hold all windows simultaneously. For single-GPU or memory-limited jobs, use `runner: standard`.
 
+**GROMACS HREX**: Set `runner: repex` under `gromacs-settings` to enable Hamiltonian replica exchange. GROMACS uses thread-MPI (`-ntmpi N`), so no MPI installation is needed — it works on a single workstation. One thread is spawned per lambda window, so ensure sufficient CPU cores and GPU memory. `repex-frequency` controls how often exchange moves are attempted (in MD steps).
+
+**AMBER HREX**: Set `runner: repex` under `amber-settings` and provide the path to `pmemd.MPI` via `exe`. The AMBER HREX runner uses native MPI (`mpirun pmemd.MPI -rem 3`) and runs the full min/eq/production pipeline inline rather than being orchestrated by Snakemake stages.
+
 **SOMD2 lambda windows**: For RBFE with SOMD2, the number of lambda windows per perturbation is controlled by `network_settings.lambda_windows` and `network_settings.diff_lambda_windows`, not by `somd2-settings`. There is no `num_lambda` field in the SOMD2 block.
 
 **HMR with GROMACS**: When using `timestep: 4fs`, set `hmr_factor: 3`. HMR is applied during the preparation step; production runs then use `hmr: false` internally. Setting `hmr_factor: 1` disables HMR.
 
 **Replicas and error estimation**: Use at least 3 replicas (`num_replicas: 3`). The final reported uncertainty is the maximum of the propagated MBAR error and the standard deviation of the mean across replicas.
 
-**Production engine**: Only `somd2` and `gromacs` are supported for RBFE production. `amber` is available for minimisation and equilibration stages only.
+**Production engine**: `somd2`, `gromacs`, and `amber` are all supported for RBFE production. `amber` supports both `standard` (GPU-accelerated `pmemd.cuda`) and `repex` (MPI `pmemd.MPI`) runners.
 
 **Restarting and extending runs**: Set `restart: true` under `production-settings` to resume GROMACS production from checkpoint (`.cpt`) files or to continue a SOMD2 run from its checkpoint. This works for both crash recovery and extending the runtime of a completed run. For extensions, first increase `runtime`, then run `workflow/scripts/clean_for_restart.py --config config/config_rbfe.yml` to clear the old `.done` markers and analysis outputs, then re-run Snakemake. Pass `--dry-run` to the script first to preview what will be removed. Set `restart: false` again after the run completes to avoid unintentional reruns.
 
