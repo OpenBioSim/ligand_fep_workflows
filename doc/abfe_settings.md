@@ -365,6 +365,15 @@ does not have bonded restraint terms, so only `coul` and `vdw` are needed.
         vdw:    [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
                  0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]
 
+    # Sampling strategy for production.
+    # standard: each lambda window runs independently (default).
+    # repex: Hamiltonian replica exchange — all windows run together via
+    #        gmx mdrun -multidir -replex. Uses thread-MPI; no MPI install needed.
+    runner: standard
+
+    # Steps between replica exchange attempts. Only used when runner: repex.
+    repex-frequency: 1000
+
     free-leg-settings:
       runtime: 2ns
       timestep: 4fs          # Requires hmr_factor: 3
@@ -381,6 +390,10 @@ does not have bonded restraint terms, so only `coul` and `vdw` are needed.
       report-interval: 1ps
       restart-interval: 500ps
 ```
+
+#### GROMACS HREX (Hamiltonian Replica Exchange)
+
+When `runner: repex`, all lambda windows are run together in a single `gmx mdrun -multidir -replex` invocation. Minimisation and the internal NVT/NPT equilibration always run per-window; only the production step uses multidir. Thread-MPI is used (`-ntmpi N` where N is the number of windows), so no MPI installation is required. One thread is spawned per window — ensure enough CPU cores and combined GPU memory.
 
 ### SOMD2 production settings
 
@@ -525,9 +538,9 @@ snakemake clean_production -s workflow/Snakefile --configfile config/config_abfe
 │       └── {ligand}_bound.bss
 ├── restraints/                     # Boresch restraint search outputs
 │   └── {ligand}/
-│       ├── restraint_search_sim/   # Restraint search simulation files
 │       ├── {ligand}_restraint.json # Selected restraint parameters
-│       └── {ligand}_correction.txt # Standard-state correction (kcal/mol)
+│       ├── {ligand}_correction.txt # Standard-state correction (kcal/mol)
+│       └── *.gro, *.top, *.mdp     # Restraint search simulation files
 ├── production/                     # Production simulation outputs
 │   └── {engine}/                   # somd2/ or gromacs/
 │       └── {ligand}/
@@ -561,37 +574,43 @@ snakemake clean_production -s workflow/Snakefile --configfile config/config_abfe
 3. **HMR for GROMACS**: Set `hmr_factor: 3` when using a 4 fs timestep.
    SOMD2 manages HMR internally and does not need this setting.
 
-4. **SOMD2 equilibration**: SOMD2 handles per-window equilibration internally
+4. **GROMACS HREX**: Set `runner: repex` under `gromacs-settings` to enable
+   Hamiltonian replica exchange. Thread-MPI is used (`-ntmpi N`, one thread per
+   lambda window), so no MPI installation is needed. Ensure sufficient CPU cores
+   and combined GPU VRAM for all windows simultaneously. Use `repex-frequency`
+   to control how often exchange moves are attempted (in MD steps; default 1000).
+
+5. **SOMD2 equilibration**: SOMD2 handles per-window equilibration internally
    via `equilibration_time`. No separate equilibration Snakemake rule is needed
    or run for SOMD2 production.
 
-5. **GROMACS production equilibration**: When using GROMACS for production, a
+6. **GROMACS production equilibration**: When using GROMACS for production, a
    short NVT heat and NPT equilibration runs inside each production job before
    the production MD. This is separate from the global `min/eq-stages-bound`
    and `min/eq-stages-free` protocol.
 
-6. **Lambda schedule design (GROMACS)**: Windows 0-10 ramp bonded and coul
+7. **Lambda schedule design (GROMACS)**: Windows 0-10 ramp bonded and coul
    together while vdw stays at zero. Windows 11-20 hold bonded and coul at 1.0
    and ramp vdw from 0.1 to 1.0. This ordering avoids inserting a charged
    ligand into the environment and reduces the variance in dV/dlambda at the
    vdw end states.
 
-7. **Number of replicas**: Use at least 3 replicas. The reported uncertainty
+8. **Number of replicas**: Use at least 3 replicas. The reported uncertainty
    is the maximum of the propagated MBAR errors and the standard deviation
    across replicas, so a minimum of 3 is needed to estimate the latter.
 
-8. **Standard-state correction sign**: The correction stored in
+9. **Standard-state correction sign**: The correction stored in
    `{ligand}_correction.txt` is negative (approximately -10 to -12 kcal/mol
    for typical Boresch restraints). It is added to the calculated
    `DG_free - DG_bound` as shown in the formula above.
 
-9. **Density stabilisation**: The last min/eq stage for each leg is a long
+10. **Density stabilisation**: The last min/eq stage for each leg is a long
    unrestrained NPT run that allows the box volume to converge. For the free
    (ligand-only) leg 500 ps is sufficient; for the bound (protein-ligand) leg
    2 ns is recommended. Shortening these stages risks starting production at a
    non-equilibrium density and can introduce systematic errors.
 
-10. **Restarting and extending runs**: Set `restart: true` under
+11. **Restarting and extending runs**: Set `restart: true` under
     `production-settings` to resume GROMACS production from checkpoint (`.cpt`)
     files or to continue a SOMD2 run. This works for both crash recovery and
     extending the runtime of a completed run. For extensions, first increase
