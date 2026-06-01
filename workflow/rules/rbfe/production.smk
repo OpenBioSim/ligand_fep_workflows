@@ -165,10 +165,11 @@ def _run_gromacs_stages(output_directory, repex=False, repex_frequency=1000):
         # Re-run grompp for each lambda using equilibrated coordinates, then launch
         # all windows together with -replex.
         print("Running HREX production (grompp per lambda, then multidir mdrun)")
-        top_file = f"{output_directory}/gromacs.top"
+        shared_top = Path(f"{output_directory}/gromacs.top")
         for lambda_value in lambda_values:
             lam_dir = f"{output_directory}/lambda_{lambda_value}"
             eq_gro = f"{output_directory}/eq/lambda_{lambda_value}/gromacs.gro"
+            top_file = str(shared_top) if shared_top.exists() else f"{lam_dir}/gromacs.top"
             shell(
                 f"gmx grompp -f {lam_dir}/gromacs.mdp -c {eq_gro} -p {top_file} "
                 f"-o {lam_dir}/gromacs.tpr -maxwarn 1 2>&1 | tee {lam_dir}/grompp.log"
