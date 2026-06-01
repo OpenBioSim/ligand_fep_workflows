@@ -96,6 +96,8 @@ production-settings:
 
   gromacs-settings:
     hmr_factor: 3
+    runner: repex
+    repex-frequency: 1000
     free-leg-settings:
       runtime: 10ps
       timestep: 4fs

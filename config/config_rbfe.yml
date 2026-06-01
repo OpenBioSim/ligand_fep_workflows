@@ -209,6 +209,12 @@ production-settings:
     # Hydrogen mass repartitioning factor (3 recommended for GROMACS with 4fs timestep)
     hmr_factor: 3
 
+    # Runner type: "repex" (Hamiltonian replica exchange) or "standard" (independent windows).
+    # repex runs all lambda windows together via gmx mdrun -multidir -replex using thread-MPI.
+    runner: repex
+    # Number of MD steps between replica exchange attempts (repex only).
+    repex-frequency: 1000
+
     # Settings for FREE leg production
     free-leg-settings:
       runtime: 10ps           # Production runtime per lambda window (typical production: 2ns)

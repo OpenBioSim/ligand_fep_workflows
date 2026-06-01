@@ -222,6 +222,13 @@ production-settings:
         vdw: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
               0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]
 
+    # Runner type: "repex" (Hamiltonian replica exchange) or "standard" (independent windows).
+    # repex runs all lambda windows together via gmx mdrun -multidir -replex using thread-MPI.
+    # standard runs each lambda window independently.
+    runner: repex
+    # Number of MD steps between replica exchange attempts (repex only).
+    repex-frequency: 1000
+
     # Settings for FREE leg production
     free-leg-settings:
       runtime: 2ns
