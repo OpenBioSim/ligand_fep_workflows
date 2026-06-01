@@ -22,6 +22,7 @@ _engine = config.get("engine", config["production-settings"].get("engine", "grom
 _gromacs_runner = config["production-settings"].get("gromacs-settings", {}).get("runner", "standard").strip().lower()
 _repex_frequency = config["production-settings"].get("gromacs-settings", {}).get("repex-frequency", 1000)
 _oversubscribe = config["production-settings"].get("gromacs-settings", {}).get("oversubscribe", True)
+_gromacs_gpus_per_job = config["production-settings"].get("gromacs-settings", {}).get("gpus_per_job", 1)
 
 
 def _calc_nsteps_abfe(leg: str) -> int:
@@ -345,7 +346,7 @@ rule production_bound:
     threads:
         config["simulation_threads"]
     resources:
-        gpu=1
+        gpu=_gromacs_gpus_per_job if _gromacs_runner == "repex" else 1
     log:
         Path(f"{config['working_directory']}/logs")
         / "{ligand}_production_bound_{replica}.log",
@@ -459,7 +460,7 @@ rule production_free:
     threads:
         config["simulation_threads"]
     resources:
-        gpu=1
+        gpu=_gromacs_gpus_per_job if _gromacs_runner == "repex" else 1
     log:
         Path(f"{config['working_directory']}/logs")
         / "{ligand}_production_free_{replica}.log",

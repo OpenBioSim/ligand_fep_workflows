@@ -322,6 +322,12 @@
               "default": true,
               "description": "Pass --oversubscribe to mpirun, allowing more MPI ranks than CPU slots (default: true)."
             },
+            "gpus_per_job": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1,
+              "description": "Number of GPUs per production job for repex (default: 1)."
+            },
             "free-leg-settings": {
               "type": "object",
               "properties": {

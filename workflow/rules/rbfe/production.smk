@@ -4,6 +4,7 @@ import pandas as pd
 _gromacs_runner = config["production-settings"].get("gromacs-settings", {}).get("runner", "standard").strip().lower()
 _repex_frequency = config["production-settings"].get("gromacs-settings", {}).get("repex-frequency", 1000)
 _oversubscribe = config["production-settings"].get("gromacs-settings", {}).get("oversubscribe", True)
+_gromacs_gpus_per_job = config["production-settings"].get("gromacs-settings", {}).get("gpus_per_job", 1)
 
 
 def _get_rbfe_pairs():
@@ -232,7 +233,7 @@ rule production_bound:
         done = Path(f"{config['working_directory']}/production/{_engine}/{{ligand1}}~{{ligand2}}/bound_{{replica_number}}/.done")
     threads: config["simulation_threads"]
     resources:
-        gpu=config["production-settings"].get("somd2-settings", {}).get("gpus_per_job", 1) if _engine == "somd2" else 1
+        gpu=config["production-settings"].get("somd2-settings", {}).get("gpus_per_job", 1) if _engine == "somd2" else (_gromacs_gpus_per_job if _gromacs_runner == "repex" else 1)
     log:
         Path(f"{config['working_directory']}/logs/{{ligand1}}~{{ligand2}}_production_bound_{{replica_number}}.log")
     run:
@@ -255,7 +256,7 @@ rule production_free:
         done = Path(f"{config['working_directory']}/production/{_engine}/{{ligand1}}~{{ligand2}}/free_{{replica_number}}/.done")
     threads: config["simulation_threads"]
     resources:
-        gpu=config["production-settings"].get("somd2-settings", {}).get("gpus_per_job", 1) if _engine == "somd2" else 1
+        gpu=config["production-settings"].get("somd2-settings", {}).get("gpus_per_job", 1) if _engine == "somd2" else (_gromacs_gpus_per_job if _gromacs_runner == "repex" else 1)
     log:
         Path(f"{config['working_directory']}/logs/{{ligand1}}~{{ligand2}}_production_free_{{replica_number}}.log")
     run:
