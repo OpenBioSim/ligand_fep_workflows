@@ -393,7 +393,7 @@ does not have bonded restraint terms, so only `coul` and `vdw` are needed.
 
 #### GROMACS HREX (Hamiltonian Replica Exchange)
 
-When `runner: repex`, all lambda windows are run together in a single `gmx mdrun -multidir -replex` invocation. Minimisation and the internal NVT/NPT equilibration always run per-window; only the production step uses multidir. Thread-MPI is used (`-ntmpi N` where N is the number of windows), so no MPI installation is required. One thread is spawned per window — ensure enough CPU cores and combined GPU memory.
+When `runner: repex`, all lambda windows are run together in a single `gmx_mpi mdrun -multidir -replex` invocation via `mpirun`. Minimisation and the internal NVT/NPT equilibration always run per-window; only the production step uses multidir. GROMACS `-multidir` requires an MPI-enabled build — ensure `gmx_mpi` and `mpirun` are available in your environment. One MPI rank is spawned per window; ensure enough CPU cores and combined GPU memory.
 
 ### SOMD2 production settings
 
@@ -575,10 +575,12 @@ snakemake clean_production -s workflow/Snakefile --configfile config/config_abfe
    SOMD2 manages HMR internally and does not need this setting.
 
 4. **GROMACS HREX**: Set `runner: repex` under `gromacs-settings` to enable
-   Hamiltonian replica exchange. Thread-MPI is used (`-ntmpi N`, one thread per
-   lambda window), so no MPI installation is needed. Ensure sufficient CPU cores
-   and combined GPU VRAM for all windows simultaneously. Use `repex-frequency`
-   to control how often exchange moves are attempted (in MD steps; default 1000).
+   Hamiltonian replica exchange. The workflow calls `mpirun -np N gmx_mpi mdrun
+   -multidir -replex` — GROMACS `-multidir` requires an MPI-enabled build, so
+   `gmx_mpi` and `mpirun` must be available in your environment. Ensure
+   sufficient CPU cores and combined GPU VRAM for all windows simultaneously.
+   Use `repex-frequency` to control exchange attempt frequency (MD steps;
+   default 1000).
 
 5. **SOMD2 equilibration**: SOMD2 handles per-window equilibration internally
    via `equilibration_time`. No separate equilibration Snakemake rule is needed

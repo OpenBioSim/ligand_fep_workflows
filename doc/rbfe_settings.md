@@ -268,7 +268,7 @@ Key GROMACS options:
 
 #### GROMACS HREX (Hamiltonian Replica Exchange)
 
-When `runner: repex`, all lambda windows are run together in a single `gmx mdrun -multidir -replex` invocation. Minimisation and equilibration always run per-window independently; only the production step uses multidir. GROMACS thread-MPI is used (`-ntmpi N`, where N is the number of lambda windows), so no MPI installation is required — this is suitable for a single workstation with multiple GPUs or CPU cores.
+When `runner: repex`, all lambda windows are run together in a single `gmx_mpi mdrun -multidir -replex` invocation via `mpirun`. Minimisation and equilibration always run per-window independently; only the production step uses multidir. GROMACS `-multidir` requires an MPI-enabled build (`gmx_mpi`); the `gmx_mpi` binary must be available in your environment.
 
 ```yaml
   gromacs-settings:
@@ -410,7 +410,7 @@ All outputs are written under `working_directory` (e.g. `output/rbfe/`).
 
 **SOMD2 runner**: `repex` performs replica exchange Monte Carlo moves between lambda windows. It allocates one OpenMM context per window at startup, so total GPU VRAM must be sufficient to hold all windows simultaneously. For single-GPU or memory-limited jobs, use `runner: standard`.
 
-**GROMACS HREX**: Set `runner: repex` under `gromacs-settings` to enable Hamiltonian replica exchange. GROMACS uses thread-MPI (`-ntmpi N`), so no MPI installation is needed — it works on a single workstation. One thread is spawned per lambda window, so ensure sufficient CPU cores and GPU memory. `repex-frequency` controls how often exchange moves are attempted (in MD steps).
+**GROMACS HREX**: Set `runner: repex` under `gromacs-settings` to enable Hamiltonian replica exchange. GROMACS `-multidir` requires an MPI-enabled build — the workflow calls `mpirun -np N gmx_mpi mdrun`. Ensure `gmx_mpi` and `mpirun` are available in your environment. One MPI rank is spawned per lambda window; ensure sufficient CPU cores and GPU memory. `repex-frequency` controls how often exchange moves are attempted (in MD steps).
 
 **AMBER HREX**: Set `runner: repex` under `amber-settings` and provide the path to `pmemd.MPI` via `exe`. The AMBER HREX runner uses native MPI (`mpirun pmemd.MPI -rem 3`) and runs the full min/eq/production pipeline inline rather than being orchestrated by Snakemake stages.
 

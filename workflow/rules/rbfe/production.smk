@@ -177,7 +177,7 @@ def _run_gromacs_stages(output_directory, repex=False, repex_frequency=1000):
         n_replicas = len(lambda_values)
         multidir = " ".join(f"lambda_{lv}" for lv in lambda_values)
         shell(
-            f"cd {output_directory} && gmx mdrun -ntmpi {n_replicas} -deffnm gromacs "
+            f"cd {output_directory} && mpirun -np {n_replicas} gmx_mpi mdrun -deffnm gromacs "
             f"-c gromacs_out.gro -multidir {multidir} -replex {repex_frequency} "
             f"2>&1 | tee mdrun.log"
         )
