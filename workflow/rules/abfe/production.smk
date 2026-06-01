@@ -388,7 +388,7 @@ rule production_bound:
             n_replicas = len(lambda_values)
             lam_dirs = " ".join(str(prod_dir / f"lambda_{lv}") for lv in lambda_values)
             shell(
-                f"cd {prod_dir} && gmx mdrun -ntmpi {n_replicas} -deffnm gromacs "
+                f"cd {prod_dir} && mpirun -np {n_replicas} gmx_mpi mdrun -deffnm gromacs "
                 f"-c gromacs_out.gro -multidir {lam_dirs} -replex {_repex_frequency} "
                 f"> mdrun.log 2>&1"
             )
@@ -497,7 +497,7 @@ rule production_free:
             n_replicas = len(lambda_values)
             lam_dirs = " ".join(str(prod_dir / f"lambda_{lv}") for lv in lambda_values)
             shell(
-                f"cd {prod_dir} && gmx mdrun -ntmpi {n_replicas} -deffnm gromacs "
+                f"cd {prod_dir} && mpirun -np {n_replicas} gmx_mpi mdrun -deffnm gromacs "
                 f"-c gromacs_out.gro -multidir {lam_dirs} -replex {_repex_frequency} "
                 f"> mdrun.log 2>&1"
             )
