@@ -378,7 +378,7 @@ pivoted["DDG"] = pivoted["bound"] - pivoted["free"]
 result = pivoted.groupby(["ligand1", "ligand2"])["DDG"].mean().reset_index()
 # Now the error
 result["error"] = (
-    pivoted.groupby(["ligand1", "ligand2"])["DDG"].std().reset_index()["DDG"]
+    pivoted.groupby(["ligand1", "ligand2"])["DDG"].std(ddof=0).reset_index()["DDG"]
 )
 
 # save "result" to the output directory as a csv file

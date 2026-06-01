@@ -408,7 +408,7 @@ def main():
     )
 
     # Add standard deviation over replicas
-    df_summary["DG_bind_std"] = df_all.groupby("ligand")["DG_bind"].std().values
+    df_summary["DG_bind_std"] = df_all.groupby("ligand")["DG_bind"].std(ddof=0).values
 
     # Final error is max of propagated error and replica std
     df_summary["error"] = np.maximum(df_summary["error"], df_summary["DG_bind_std"])
