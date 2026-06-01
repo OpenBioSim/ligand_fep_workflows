@@ -192,8 +192,10 @@ def main():
 
     if args.engine == "gromacs":
         import BioSimSpace.Sandpit.Exscientia as BSS
+        analyser = BSS.FreeEnergy.AlchemicalFreeEnergy
     else:
         import BioSimSpace as BSS
+        analyser = BSS.FreeEnergy.Relative
 
     input_dir = Path(args.input_directory)
     output_dir = Path(args.output_directory)
@@ -205,7 +207,7 @@ def main():
     temperature = BSS.Types.Temperature(args.temperature)
 
     try:
-        pmf, overlap = BSS.FreeEnergy.Relative.analyse(
+        pmf, overlap = analyser.analyse(
             str(input_dir),
             temperature=temperature,
             estimator=args.estimator,
