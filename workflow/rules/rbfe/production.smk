@@ -3,6 +3,7 @@ import pandas as pd
 
 _gromacs_runner = config["production-settings"].get("gromacs-settings", {}).get("runner", "standard").strip().lower()
 _repex_frequency = config["production-settings"].get("gromacs-settings", {}).get("repex-frequency", 1000)
+_oversubscribe = config["production-settings"].get("gromacs-settings", {}).get("oversubscribe", True)
 
 
 def _get_rbfe_pairs():
@@ -98,6 +99,8 @@ def create_python_script_call(wc, input, leg):
             args.append(f"--restart-interval {cfg['restart-interval']}")
         args.append(f"--runner {_gromacs_runner}")
         args.append(f"--repex-frequency {_repex_frequency}")
+        if _oversubscribe:
+            args.append("--oversubscribe")
         args.append(f"--network-location {config['working_directory']}/network")
 
     return f"""
@@ -177,7 +180,8 @@ def _run_gromacs_stages(output_directory, repex=False, repex_frequency=1000):
         n_replicas = len(lambda_values)
         multidir = " ".join(f"lambda_{lv}" for lv in lambda_values)
         shell(
-            f"cd {output_directory} && mpirun -np {n_replicas} gmx_mpi mdrun -deffnm gromacs "
+            f"cd {output_directory} && mpirun {'--oversubscribe ' if _oversubscribe else ''}"
+            f"-np {n_replicas} gmx_mpi mdrun -deffnm gromacs "
             f"-c gromacs_out.gro -multidir {multidir} -replex {repex_frequency} "
             f"2>&1 | tee mdrun.log"
         )

@@ -125,6 +125,12 @@ def parse_args() -> argparse.Namespace:
         default=1000,
         help="Exchange attempt frequency in steps for GROMACS repex (default: 1000).",
     )
+    parser.add_argument(
+        "--oversubscribe",
+        action="store_true",
+        default=True,
+        help="Pass --oversubscribe to mpirun (default: True).",
+    )
     return parser.parse_args()
 
 
@@ -223,6 +229,7 @@ def setup_gromacs_abfe(
     restart_interval: int,
     runner: str = "standard",
     repex_frequency: int = 1000,
+    oversubscribe: bool = True,
 ) -> None:
     """
     Set up GROMACS ABFE simulations using BioSimSpace unified protocol.
@@ -340,13 +347,14 @@ def setup_gromacs_abfe(
     )
     use_repex = runner.strip().lower() == "repex"
     if use_repex:
-        print(f"  Using HREX runner (repex_frequency={repex_frequency})")
+        print(f"  Using HREX runner (repex_frequency={repex_frequency}, oversubscribe={oversubscribe})")
     BSS.FreeEnergy.AlchemicalFreeEnergy(
         system,
         prod_protocol,
         engine="gromacs",
         repex=use_repex,
         repex_frequency=repex_frequency,
+        oversubscribe=oversubscribe,
         work_dir=str(output_dir),
         restraint=restraint,
         setup_only=True,
@@ -416,6 +424,7 @@ def main():
         restart_interval=restart_interval,
         runner=args.runner,
         repex_frequency=args.repex_frequency,
+        oversubscribe=args.oversubscribe,
     )
 
     print(f"\nABFE setup complete: {args.ligand_name} {args.leg}")
