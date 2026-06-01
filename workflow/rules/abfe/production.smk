@@ -21,6 +21,7 @@ from pathlib import Path
 _engine = config.get("engine", config["production-settings"].get("engine", "gromacs")).strip().lower()
 _gromacs_runner = config["production-settings"].get("gromacs-settings", {}).get("runner", "standard").strip().lower()
 _repex_frequency = config["production-settings"].get("gromacs-settings", {}).get("repex-frequency", 1000)
+_oversubscribe = config["production-settings"].get("gromacs-settings", {}).get("oversubscribe", True)
 
 
 def _calc_nsteps_abfe(leg: str) -> int:
@@ -149,7 +150,8 @@ rule equilibrate_bound:
             f"--restart-interval {params.restart_interval} "
             f"--runner {_gromacs_runner} "
             f"--repex-frequency {_repex_frequency} "
-            f"2>&1 | tee {log}"
+            + ("--oversubscribe " if _oversubscribe else "")
+            + f"2>&1 | tee {log}"
         )
 
         # Clean up schedule file
@@ -273,7 +275,8 @@ rule equilibrate_free:
             f"--restart-interval {params.restart_interval} "
             f"--runner {_gromacs_runner} "
             f"--repex-frequency {_repex_frequency} "
-            f"2>&1 | tee {log}"
+            + ("--oversubscribe " if _oversubscribe else "")
+            + f"2>&1 | tee {log}"
         )
 
         # Clean up schedule file
@@ -388,7 +391,8 @@ rule production_bound:
             n_replicas = len(lambda_values)
             lam_dirs = " ".join(str(prod_dir / f"lambda_{lv}") for lv in lambda_values)
             shell(
-                f"cd {prod_dir} && mpirun -np {n_replicas} gmx_mpi mdrun -deffnm gromacs "
+                f"cd {prod_dir} && mpirun {'--oversubscribe ' if _oversubscribe else ''}"
+                f"-np {n_replicas} gmx_mpi mdrun -deffnm gromacs "
                 f"-c gromacs_out.gro -multidir {lam_dirs} -replex {_repex_frequency} "
                 f"> mdrun.log 2>&1"
             )
@@ -497,7 +501,8 @@ rule production_free:
             n_replicas = len(lambda_values)
             lam_dirs = " ".join(str(prod_dir / f"lambda_{lv}") for lv in lambda_values)
             shell(
-                f"cd {prod_dir} && mpirun -np {n_replicas} gmx_mpi mdrun -deffnm gromacs "
+                f"cd {prod_dir} && mpirun {'--oversubscribe ' if _oversubscribe else ''}"
+                f"-np {n_replicas} gmx_mpi mdrun -deffnm gromacs "
                 f"-c gromacs_out.gro -multidir {lam_dirs} -replex {_repex_frequency} "
                 f"> mdrun.log 2>&1"
             )

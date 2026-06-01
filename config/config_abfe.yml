@@ -228,6 +228,7 @@ production-settings:
     runner: repex
     # Number of MD steps between replica exchange attempts (repex only).
     repex-frequency: 1000
+    oversubscribe: true
 
     # Settings for FREE leg production
     free-leg-settings:

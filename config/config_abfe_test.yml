@@ -115,6 +115,7 @@ production-settings:
         vdw: [0.0, 0.0, 0.0, 0.5, 1.0]
     runner: repex
     repex-frequency: 1000
+    oversubscribe: true
     free-leg-settings:
       runtime: 10ps
       timestep: 4fs

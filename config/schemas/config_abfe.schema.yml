@@ -310,6 +310,11 @@
               "default": 1000,
               "description": "Exchange attempt frequency in MD steps for GROMACS repex (default: 1000)."
             },
+            "oversubscribe": {
+              "type": "boolean",
+              "default": true,
+              "description": "Pass --oversubscribe to mpirun, allowing more MPI ranks than CPU slots (default: true)."
+            },
             "lambda_schedules": {
               "type": "object",
               "description": "Unified lambda schedules for bound and free legs.",

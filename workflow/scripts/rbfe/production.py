@@ -157,6 +157,12 @@ def main():
         help="Exchange attempt frequency in steps for GROMACS/AMBER replica exchange (default: 1000).",
     )
     parser.add_argument(
+        "--oversubscribe",
+        action="store_true",
+        default=True,
+        help="Pass --oversubscribe to mpirun for GROMACS repex (default: True).",
+    )
+    parser.add_argument(
         "--amber-exe",
         type=str,
         default=None,
@@ -243,6 +249,7 @@ def main():
     engine = args.engine.strip().lower()
     runner = args.runner.strip().lower()
     repex_frequency = args.repex_frequency
+    oversubscribe = args.oversubscribe
     working_dir = str(Path(args.output_directory))
     if engine not in ["somd2", "gromacs"]:
 
@@ -411,6 +418,7 @@ def main():
             engine="gromacs",
             repex=(runner == "repex"),
             repex_frequency=repex_frequency,
+            oversubscribe=oversubscribe,
             work_dir=working_dir,
             extra_args={
                 "-ntmpi": "1",
