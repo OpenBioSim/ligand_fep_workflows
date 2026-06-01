@@ -368,18 +368,18 @@ rule production_bound:
 
         if _gromacs_runner == "repex":
             # HREX production: all lambda windows run together under gmx mdrun -multidir.
-            # BSS (via GromacsHREX) has already written the shared topology to eq_dir/gromacs.top
-            # and per-lambda MDPs to eq_dir/lambda_*/gromacs.mdp.
-            # Re-run grompp for each lambda using equilibrated coordinates, putting the TPR
-            # in prod_dir/lambda_*/ so that the multidir run writes output there.
+            # Use shared topology at eq_dir/gromacs.top if present (written by GromacsHREX);
+            # fall back to a per-lambda topology if equilibration ran with runner=standard.
+            # Topologies are identical across lambda windows — only MDPs differ.
             if restart:
                 raise NotImplementedError("Restart is not yet supported for GROMACS repex.")
-            top_file = eq_dir / "gromacs.top"
+            shared_top = eq_dir / "gromacs.top"
             for lambda_value in lambda_values:
                 lam_prod = prod_dir / f"lambda_{lambda_value}"
                 lam_prod.mkdir(exist_ok=True)
                 eq_gro = eq_dir / "eq" / f"lambda_{lambda_value}" / "gromacs.gro"
                 mdp_file = eq_dir / f"lambda_{lambda_value}" / "gromacs.mdp"
+                top_file = shared_top if shared_top.exists() else eq_dir / f"lambda_{lambda_value}" / "gromacs.top"
                 shell(
                     f"gmx grompp -f {mdp_file} -c {eq_gro} -p {top_file} "
                     f"-o {lam_prod}/gromacs.tpr -maxwarn 1 "
@@ -482,12 +482,13 @@ rule production_free:
         if _gromacs_runner == "repex":
             if restart:
                 raise NotImplementedError("Restart is not yet supported for GROMACS repex.")
-            top_file = eq_dir / "gromacs.top"
+            shared_top = eq_dir / "gromacs.top"
             for lambda_value in lambda_values:
                 lam_prod = prod_dir / f"lambda_{lambda_value}"
                 lam_prod.mkdir(exist_ok=True)
                 eq_gro = eq_dir / "eq" / f"lambda_{lambda_value}" / "gromacs.gro"
                 mdp_file = eq_dir / f"lambda_{lambda_value}" / "gromacs.mdp"
+                top_file = shared_top if shared_top.exists() else eq_dir / f"lambda_{lambda_value}" / "gromacs.top"
                 shell(
                     f"gmx grompp -f {mdp_file} -c {eq_gro} -p {top_file} "
                     f"-o {lam_prod}/gromacs.tpr -maxwarn 1 "
