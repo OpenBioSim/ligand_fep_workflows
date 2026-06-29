@@ -212,10 +212,19 @@ def _check_production_complete(prod_dir: Path) -> bool:
 
 
 def _get_gromacs_performance(prod_dir: Path) -> Optional[float]:
-    """Extract average per-window ns/day from a GROMACS production directory."""
+    """Extract average per-window ns/day from a GROMACS production directory.
+
+    Prefers the final Performance: summary written at run completion. Falls back
+    to estimating from current step count and TPR/log timestamps for in-progress
+    or crashed runs that never wrote the summary line.
+    """
+    import re as _re
+    import os as _os
+
     ns_per_day_values = []
     for lambda_dir in sorted(prod_dir.glob("lambda_*")):
         log_file = lambda_dir / "gromacs.log"
+        tpr_file = lambda_dir / "gromacs.tpr"
         if not log_file.exists():
             continue
         try:
@@ -224,11 +233,32 @@ def _get_gromacs_performance(prod_dir: Path) -> Optional[float]:
                 size = f.tell()
                 f.seek(max(0, size - 1024))
                 tail = f.read().decode("utf-8", errors="replace")
+
+            # Primary: use the final Performance: summary line
             for line in tail.splitlines():
                 if line.strip().startswith("Performance:"):
                     parts = line.split()
                     ns_per_day_values.append(float(parts[1]))
                     break
+            else:
+                # Fallback: estimate from step count and wall time
+                if not tpr_file.exists():
+                    continue
+                last_time_ps = None
+                for line in tail.splitlines():
+                    m = _re.match(r"^\s+(\d+)\s+([\d.]+)\s*$", line)
+                    if m:
+                        last_time_ps = float(m.group(2))
+                if last_time_ps is None or last_time_ps <= 0:
+                    continue
+                tpr_mtime = _os.path.getmtime(str(tpr_file))
+                log_mtime = _os.path.getmtime(str(log_file))
+                elapsed_s = log_mtime - tpr_mtime
+                if elapsed_s <= 0:
+                    continue
+                ns_per_day_values.append(
+                    (last_time_ps / 1000) / (elapsed_s / 86400)
+                )
         except (OSError, ValueError, IndexError):
             continue
     if ns_per_day_values:
