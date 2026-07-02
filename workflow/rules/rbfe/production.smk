@@ -39,6 +39,8 @@ def create_python_script_call(wc, input, leg):
             args.append(f"--cutoff {cfg['cutoff']}")
         if cfg.get("energy_frequency"):
             args.append(f"--energy-frequency {cfg['energy_frequency']}")
+        if cfg.get("num_energy_neighbours") is not None:
+            args.append(f"--num-energy-neighbours {cfg['num_energy_neighbours']}")
         if cfg.get("frame_frequency"):
             args.append(f"--frame-frequency {cfg['frame_frequency']}")
         if cfg.get("checkpoint_frequency"):

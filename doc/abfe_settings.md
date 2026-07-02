@@ -420,6 +420,15 @@ evaluations is `2 * num_lambda`.
     # Total lambda evaluations = 2 * num_lambda.
     num_lambda: 21
 
+    # Number of neighbouring lambda windows for which energies are evaluated.
+    # Controls the trade-off between MBAR accuracy and computational cost:
+    #   unset / null: evaluate at all windows (full MBAR, default)
+    #   5:            evaluate at ±5 neighbours (intermediate accuracy)
+    #   1:            evaluate at ±1 neighbours only (equivalent to BAR, fastest)
+    # Reducing this value speeds up energy evaluation but limits the estimator
+    # to windows within the neighbourhood, potentially increasing free energy errors.
+    # num_energy_neighbours: 5
+
     # Frequency for writing energy data
     energy_frequency: 1ps
 

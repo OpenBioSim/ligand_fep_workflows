@@ -155,6 +155,13 @@ def parse_args() -> argparse.Namespace:
         help="Alchemical perturbation type: 'annihilate' (removes all non-bonded, default) or 'decouple' (removes only intermolecular).",
     )
     parser.add_argument(
+        "--num-energy-neighbours",
+        type=int,
+        default=None,
+        help="Number of neighbouring lambda windows for energy evaluation. "
+        "None = all windows (full MBAR), 1 = BAR, 5 = intermediate.",
+    )
+    parser.add_argument(
         "--restart",
         action="store_true",
         default=False,
@@ -313,6 +320,7 @@ def main():
         cutoff_type=args.cutoff_type,
         cutoff=args.cutoff,
         num_lambda=args.num_lambda,
+        num_energy_neighbours=args.num_energy_neighbours,
         energy_frequency=args.energy_frequency,
         frame_frequency=args.frame_frequency,
         checkpoint_frequency=args.checkpoint_frequency,
