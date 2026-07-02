@@ -124,6 +124,9 @@ rule somd2_production_bound:
         perturbation_type=lambda wc: config["production-settings"].get("somd2-settings", {}).get(
             "perturbation_type", "annihilate"
         ),
+        num_energy_neighbours=lambda wc: config["production-settings"].get("somd2-settings", {}).get(
+            "num_energy_neighbours", None
+        ),
         restart=config["production-settings"].get("restart", False),
         output_directory=lambda wc: Path(
             f"{config['working_directory']}/production/{_engine}/{wc.ligand}/bound_{wc.replica}"
@@ -151,6 +154,7 @@ rule somd2_production_bound:
             --equilibration-time {params.equilibration_time} \
             --runner {params.runner} \
             --perturbation-type {params.perturbation_type} \
+            $([ "{params.num_energy_neighbours}" != "None" ] && echo "--num-energy-neighbours {params.num_energy_neighbours}") \
             $([ "{params.restart}" = "True" ] && echo "--restart") \
             2>&1 | tee {log}
         touch {output.done}

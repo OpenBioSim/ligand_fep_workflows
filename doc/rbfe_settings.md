@@ -197,6 +197,7 @@ production-settings:
     cutoff_type: RF                 # "RF" (reaction field) or "PME"
     cutoff: 12A
     energy_frequency: 1ps           # Energy output frequency (keep fine for MBAR)
+    # num_energy_neighbours: 5      # Optional: restrict energy evaluation to ±N neighbours
     frame_frequency: 500ps          # Trajectory frame output frequency
     checkpoint_frequency: 500ps     # Checkpoint write frequency
     integrator: langevin_middle
@@ -211,6 +212,7 @@ Key SOMD2 options:
 - `use-modified-dummies`: Applies corrections to dummy (ghost) atom bonded terms using the [ghostly](https://github.com/OpenBioSim/ghostly) library. Recommended for most perturbations.
 - `cutoff_type`: `RF` (reaction field) is faster and suitable for most use cases. `PME` is more rigorous but computationally more expensive.
 - `energy_frequency`: Controls how often energies are written for all lambda windows. Keep this fine-grained (1ps or similar) for accurate MBAR free energy estimates.
+- `num_energy_neighbours`: Number of neighbouring lambda windows for energy evaluation. Unset (default) evaluates at all windows (full MBAR). Set to `1` for BAR (adjacent windows only) or an intermediate value (e.g. `5`) to trade accuracy for speed. Omit this key for full MBAR.
 - `runner`: `repex` runs replica exchange Monte Carlo between lambda windows and requires one OpenMM context per window. Ensure sufficient total GPU VRAM. Use `standard` for single-GPU or memory-constrained setups.
 - `gpus_per_job`: Number of GPUs per job. For `repex` with many windows, increasing this can improve throughput.
 - Lambda window counts are determined per perturbation by `network_settings`, not set here.

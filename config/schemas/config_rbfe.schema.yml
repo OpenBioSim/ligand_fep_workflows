@@ -570,6 +570,11 @@
               "type": "integer",
               "minimum": 1,
               "description": "Number of GPUs per production job (increase for repex across multiple GPUs)."
+            },
+            "num_energy_neighbours": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "Number of neighbouring lambda windows for energy evaluation. Unset = all windows (full MBAR). 1 = BAR. Intermediate values trade accuracy for speed."
             }
           },
           "additionalProperties": false
