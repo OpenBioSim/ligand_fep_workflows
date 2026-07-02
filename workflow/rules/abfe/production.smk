@@ -393,7 +393,9 @@ rule production_bound:
             lam_dirs = " ".join(str(prod_dir / f"lambda_{lv}") for lv in lambda_values)
             shell(
                 f"cd {prod_dir} && mpirun {'--oversubscribe ' if _oversubscribe else ''}"
+                f"-mca opal_cuda_support 1 -x OMP_NUM_THREADS=1 "
                 f"-np {n_replicas} gmx_mpi mdrun -deffnm gromacs "
+                f"-bonded gpu -cpt -1 "
                 f"-c gromacs_out.gro -multidir {lam_dirs} -replex {_repex_frequency} "
                 f"> mdrun.log 2>&1"
             )
@@ -503,7 +505,9 @@ rule production_free:
             lam_dirs = " ".join(str(prod_dir / f"lambda_{lv}") for lv in lambda_values)
             shell(
                 f"cd {prod_dir} && mpirun {'--oversubscribe ' if _oversubscribe else ''}"
+                f"-mca opal_cuda_support 1 -x OMP_NUM_THREADS=1 "
                 f"-np {n_replicas} gmx_mpi mdrun -deffnm gromacs "
+                f"-bonded gpu -cpt -1 "
                 f"-c gromacs_out.gro -multidir {lam_dirs} -replex {_repex_frequency} "
                 f"> mdrun.log 2>&1"
             )
