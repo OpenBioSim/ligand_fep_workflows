@@ -29,6 +29,7 @@ from pathlib import Path
 from typing import Any
 
 import BioSimSpace.Sandpit.Exscientia as BSS
+import sire as sr
 
 
 def find_ligand(system: BSS._SireWrappers.System) -> BSS._SireWrappers.Molecule:
@@ -116,6 +117,54 @@ def parse_args() -> argparse.Namespace:
         type=str,
         default="300K",
         help="Temperature for the simulation.",
+    )
+    parser.add_argument(
+        "--method",
+        type=str,
+        choices=["bss", "sire"],
+        default="bss",
+        help="Restraint search backend: 'bss' (BioSimSpace/Aldeghi-style search, "
+        "runs via GROMACS, shared by both engines) or 'sire' (sire-native "
+        "boresch_search(), mirroring SOMD2's own built-in restraint "
+        "auto-generation; SOMD2-only).",
+    )
+    parser.add_argument(
+        "--protocol",
+        type=str,
+        choices=["rxrx", "aldeghi"],
+        default="rxrx",
+        help="sire.restraints.boresch_search() protocol (only used with --method sire).",
+    )
+    parser.add_argument(
+        "--timestep",
+        type=str,
+        default="4fs",
+        help="Integration timestep for the search trajectory (only used with --method sire).",
+    )
+    parser.add_argument(
+        "--cutoff-type",
+        type=str,
+        default="PME",
+        help="Electrostatics cutoff type for the search trajectory (only used with --method sire).",
+    )
+    parser.add_argument(
+        "--cutoff",
+        type=str,
+        default="10A",
+        help="Cutoff distance for the search trajectory (only used with --method sire).",
+    )
+    parser.add_argument(
+        "--perturbable-constraint",
+        type=str,
+        default="h_bonds_not_heavy_perturbed",
+        help="Constraint type for the perturbable ligand during the search trajectory "
+        "(only used with --method sire).",
+    )
+    parser.add_argument(
+        "--frame-frequency",
+        type=str,
+        default="10ps",
+        help="Trajectory frame sampling interval for the search (only used with --method sire).",
     )
     return parser.parse_args()
 
@@ -277,6 +326,19 @@ def save_correction(
     correction = restraint.getCorrection()
     correction_value = correction.value()  # in kcal/mol
 
+    return _write_correction_file(correction_value, output_dir, ligand_name)
+
+
+def _write_correction_file(
+    correction_value: float,
+    output_dir: Path,
+    ligand_name: str,
+) -> float:
+    """
+    Write a correction value (in kcal/mol) to the shared {ligand}_correction.txt
+    file consumed by the engine-agnostic analysis pipeline. Shared by both the
+    BSS and sire-native restraint search methods.
+    """
     output_file = output_dir / f"{ligand_name}_correction.txt"
     with open(output_file, "w") as f:
         f.write(f"{correction_value}\n")
@@ -287,10 +349,149 @@ def save_correction(
     return correction_value
 
 
+def find_ligand_sire(system: "sr.system.System"):
+    """
+    Find the ligand molecule in a sire system.
+
+    Uses the same heuristic as find_ligand()/production_somd2.py: the ligand
+    is a molecule with exactly 1 residue and more than 5 atoms.
+
+    Args:
+        system: Sire system
+
+    Returns:
+        The ligand molecule (a sire Molecule view)
+
+    Raises:
+        ValueError: If no ligand can be identified
+    """
+    for i in range(system.num_molecules()):
+        mol = system[i]
+        if mol.num_residues() == 1 and mol.num_atoms() > 5:
+            print(f"Found ligand: molecule {i}, {mol.num_atoms()} atoms")
+            return mol
+
+    raise ValueError(
+        "Could not identify ligand in system. "
+        "Expected molecule with 1 residue and >5 atoms."
+    )
+
+
+def run_native_restraint_search(
+    system: "sr.system.System",
+    runtime: str,
+    frequency: str,
+    temperature: str,
+    protocol: str,
+    timestep: str,
+    cutoff_type: str,
+    cutoff: str,
+    perturbable_constraint: str,
+):
+    """
+    Run a short unrestrained lambda=0 trajectory and use sire's native
+    boresch_search() to find optimal Boresch restraints, mirroring SOMD2's
+    own built-in restraint auto-generation (_generate_boresch_restraint in
+    somd2.runner._base), but performed here (once per ligand, ahead of
+    production) rather than per-replica, so the resulting restraint is
+    shared across all bound-leg replicas and the standard-state correction
+    can be written to the shared {ligand}_correction.txt file.
+
+    Args:
+        system: Sire system with the ligand already sire-natively decoupled
+        runtime: Duration of the search trajectory
+        frequency: Frame-saving interval for the search trajectory
+        temperature: Simulation/correction temperature
+        protocol: sire.restraints.boresch_search() protocol ("rxrx" or "aldeghi")
+        timestep: Integration timestep
+        cutoff_type: Electrostatics cutoff type
+        cutoff: Cutoff distance
+        perturbable_constraint: Constraint type for the perturbable ligand
+
+    Returns:
+        Tuple of (sire.mm.BoreschRestraints, correction value in kcal/mol)
+    """
+    from sire.restraints import boresch_search
+
+    dynamics_kwargs = {
+        "timestep": timestep,
+        "temperature": temperature,
+        "cutoff_type": cutoff_type,
+        "cutoff": cutoff,
+        "constraint": "h_bonds",
+        "perturbable_constraint": perturbable_constraint,
+        "platform": "CUDA",
+        "lambda_value": 0.0,
+    }
+
+    print("Minimising before restraint search trajectory...")
+    dynamics = system.dynamics(**dynamics_kwargs)
+    dynamics.minimise()
+    search_system = dynamics.commit()
+
+    print(f"Running restraint search trajectory for {runtime}...")
+    dynamics = search_system.dynamics(**dynamics_kwargs)
+    dynamics.run(
+        runtime,
+        energy_frequency=0,
+        frame_frequency=frequency,
+        save_velocities=False,
+    )
+    search_system = dynamics.commit()
+
+    print(f"Analysing trajectory with boresch_search(protocol={protocol!r})...")
+    restraints, correction = boresch_search(
+        search_system, protocol=protocol, temperature=temperature
+    )
+
+    correction_value = float(correction.to(sr.units.kcal_per_mol))
+    print(f"Standard state correction: {correction_value:.4f} kcal mol-1")
+
+    return restraints, correction_value
+
+
+def save_native_restraint(
+    restraints: "sr.mm.BoreschRestraints",
+    output_dir: Path,
+    ligand_name: str,
+) -> Path:
+    """
+    Save a sire-native Boresch restraint via sire's own stream serialisation
+    (no JSON massaging required, unlike the BSS-derived restraint).
+
+    Args:
+        restraints: sire.mm.BoreschRestraints object
+        output_dir: Directory for output files
+        ligand_name: Name of ligand for file naming
+
+    Returns:
+        Path to the saved restraint file
+    """
+    output_dir.mkdir(parents=True, exist_ok=True)
+    output_file = output_dir / f"{ligand_name}_restraint.s3"
+    sr.stream.save(restraints, str(output_file))
+    print(f"Saved restraint to {output_file}")
+    return output_file
+
+
 def main():
     """Main entry point for restraint search."""
     args = parse_args()
 
+    # Create output directory
+    output_dir = Path(args.output_directory)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    if args.method == "sire":
+        _main_sire(args, output_dir)
+    else:
+        _main_bss(args, output_dir)
+
+    print(f"\nRestraint search complete for {args.ligand_name}")
+
+
+def _main_bss(args: argparse.Namespace, output_dir: Path):
+    """Legacy restraint search: BioSimSpace/Aldeghi-style search via GROMACS."""
     # Parse units
     try:
         runtime = BSS.Types.Time(args.runtime)
@@ -303,10 +504,6 @@ def main():
     except ValueError:
         print(f"Error: Invalid temperature '{args.temperature}'")
         sys.exit(1)
-
-    # Create output directory
-    output_dir = Path(args.output_directory)
-    output_dir.mkdir(parents=True, exist_ok=True)
 
     # Load the equilibrated system
     print(f"Loading system from {args.input}...")
@@ -347,7 +544,52 @@ def main():
         ligand_name=args.ligand_name,
     )
 
-    print(f"\nRestraint search complete for {args.ligand_name}")
+
+def _main_sire(args: argparse.Namespace, output_dir: Path):
+    """
+    Native restraint search: sire.restraints.boresch_search(), mirroring
+    SOMD2's own built-in restraint auto-generation. SOMD2-only.
+    """
+    # Load the equilibrated system and convert to sire.
+    print(f"Loading system from {args.input}...")
+    bss_system = BSS.Stream.load(args.input)
+    system = sr.system.System(bss_system._sire_object)
+
+    # Find the ligand and apply sire-native decoupling, matching
+    # production_somd2.py so the search trajectory sees the same
+    # perturbable topology used for production.
+    ligand = find_ligand_sire(system)
+    ligand = sr.morph.decouple(ligand, as_new_molecule=False)
+    system.update(ligand)
+
+    # Normalise e.g. "300K" -> "300 K" so sire's unit parser accepts it,
+    # matching production_somd2.py's handling of the same CLI convention.
+    temp_value = float("".join(c for c in args.temperature if c.isdigit() or c == "."))
+    temperature = f"{temp_value} K"
+
+    restraints, correction_value = run_native_restraint_search(
+        system,
+        runtime=args.runtime,
+        frequency=args.frame_frequency,
+        temperature=temperature,
+        protocol=args.protocol,
+        timestep=args.timestep,
+        cutoff_type=args.cutoff_type,
+        cutoff=args.cutoff,
+        perturbable_constraint=args.perturbable_constraint,
+    )
+
+    save_native_restraint(
+        restraints=restraints,
+        output_dir=output_dir,
+        ligand_name=args.ligand_name,
+    )
+
+    _write_correction_file(
+        correction_value=correction_value,
+        output_dir=output_dir,
+        ligand_name=args.ligand_name,
+    )
 
 
 if __name__ == "__main__":

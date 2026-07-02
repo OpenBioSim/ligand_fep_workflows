@@ -68,6 +68,17 @@
           "type": "string",
           "pattern": "^[0-9]+(\\.[0-9]+)?(K)$",
           "description": "Temperature for restraint search."
+        },
+        "protocol": {
+          "type": "string",
+          "enum": ["rxrx", "aldeghi"],
+          "default": "rxrx",
+          "description": "sire.restraints.boresch_search() protocol. Only used when production-settings.somd2-settings.restraint_style is 'native'."
+        },
+        "frame_frequency": {
+          "type": "string",
+          "pattern": "^[0-9]+(\\.[0-9]+)?(ps|ns)$",
+          "description": "Trajectory frame sampling interval for the search. Only used when production-settings.somd2-settings.restraint_style is 'native'."
         }
       },
       "additionalProperties": false
@@ -532,6 +543,12 @@
               "type": "integer",
               "minimum": 1,
               "description": "Number of neighbouring lambda windows for energy evaluation. Unset = all windows (full MBAR). 1 = BAR. Intermediate values trade accuracy for speed."
+            },
+            "restraint_style": {
+              "type": "string",
+              "enum": ["legacy", "native"],
+              "default": "legacy",
+              "description": "Boresch restraint source for the bound leg. 'legacy' (default) shares the BioSimSpace/Aldeghi-style restraint search used by the GROMACS engine, via restraints/{ligand}_restraint.json. 'native' instead uses sire's own sire.restraints.boresch_search() (mirroring SOMD2's built-in restraint auto-generation), via restraints/{ligand}_restraint.s3. SOMD2-only; has no effect for engine: gromacs."
             }
           },
           "additionalProperties": false
