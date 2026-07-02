@@ -304,9 +304,15 @@ def main():
     boresch_restraints = None
     if args.leg == "bound" and args.restraint_file:
         print(f"Loading Boresch restraints from {args.restraint_file}...")
-        boresch_restraints = load_boresch_restraints(
-            system, args.restraint_file, temp_value
-        )
+        if Path(args.restraint_file).suffix == ".s3":
+            # Native sire-serialised restraint (restraint_style="native"),
+            # produced by restraint_search.py's sire-native search path -
+            # no JSON massaging required.
+            boresch_restraints = sr.stream.load(args.restraint_file)
+        else:
+            boresch_restraints = load_boresch_restraints(
+                system, args.restraint_file, temp_value
+            )
 
     # Step 5: Configure SOMD2
     # The lambda schedule and Beutler soft-core (with epsilon fixed) are handled

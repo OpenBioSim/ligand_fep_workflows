@@ -44,6 +44,12 @@ restraint_search_settings:
   search_runtime: "1ns"
   # Temperature for restraint search simulation
   temperature: "300K"
+  # sire.restraints.boresch_search() protocol: "rxrx" or "aldeghi".
+  # Only used when production-settings.somd2-settings.restraint_style is "native".
+  protocol: "rxrx"
+  # Trajectory frame sampling interval for the search.
+  # Only used when production-settings.somd2-settings.restraint_style is "native".
+  frame_frequency: "10ps"
 
 # Minimisation and equilibration stages for FREE leg
 # --------------------------------------------------
@@ -274,6 +280,12 @@ production-settings:
     # Alchemical perturbation type: "annihilate" (removes all non-bonded interactions,
     # consistent with GROMACS) or "decouple" (removes only intermolecular interactions).
     perturbation_type: annihilate
+    # Boresch restraint source for the bound leg: "legacy" (default, shares the
+    # BioSimSpace/Aldeghi-style search used by the GROMACS engine) or "native"
+    # (sire's own sire.restraints.boresch_search(), mirroring SOMD2's built-in
+    # restraint auto-generation). See restraint_search_settings for "native"'s
+    # protocol/frame_frequency options.
+    restraint_style: legacy
 
 # Analysis settings
 # -----------------

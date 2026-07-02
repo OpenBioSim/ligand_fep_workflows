@@ -17,6 +17,11 @@ and associated uncertainty.
 from pathlib import Path
 
 _engine = config.get("engine", config["production-settings"].get("engine", "gromacs")).strip().lower()
+_restraint_style = config["production-settings"].get("somd2-settings", {}).get(
+    "restraint_style", "legacy"
+)
+_native_restraint = _engine == "somd2" and _restraint_style == "native"
+_restraint_ext = "s3" if _native_restraint else "json"
 
 
 # Replica barrier
@@ -61,7 +66,7 @@ rule somd2_production_bound:
         system=Path(f"{config['working_directory']}/preparation/final")
         / "{ligand}_bound.bss",
         restraint=Path(f"{config['working_directory']}/restraints")
-        / "{ligand}_restraint.json",
+        / f"{{ligand}}_restraint.{_restraint_ext}",
         prev_replica=lambda wc: [] if int(wc.replica) == 0 else [
             f"{config['working_directory']}/production/{_engine}/.replica_{int(wc.replica) - 1}_barrier",
         ],
