@@ -182,7 +182,9 @@ def _run_gromacs_stages(output_directory, repex=False, repex_frequency=1000):
         multidir = " ".join(f"lambda_{lv}" for lv in lambda_values)
         shell(
             f"cd {output_directory} && mpirun {'--oversubscribe ' if _oversubscribe else ''}"
+            f"-mca opal_cuda_support 1 -x OMP_NUM_THREADS=1 "
             f"-np {n_replicas} gmx_mpi mdrun -deffnm gromacs "
+            f"-bonded gpu -cpt -1 "
             f"-c gromacs_out.gro -multidir {multidir} -replex {repex_frequency} "
             f"2>&1 | tee mdrun.log"
         )
