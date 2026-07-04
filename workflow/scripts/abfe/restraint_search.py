@@ -431,10 +431,8 @@ def run_native_restraint_search(
     print("Minimising before restraint search trajectory...")
     dynamics = system.dynamics(**dynamics_kwargs)
     dynamics.minimise()
-    search_system = dynamics.commit()
 
     print(f"Running restraint search trajectory for {runtime}...")
-    dynamics = search_system.dynamics(**dynamics_kwargs)
     dynamics.run(
         runtime,
         energy_frequency=0,
