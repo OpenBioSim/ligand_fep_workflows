@@ -309,6 +309,26 @@ def main():
             # produced by restraint_search.py's sire-native search path -
             # no JSON massaging required.
             boresch_restraints = sr.stream.load(args.restraint_file)
+
+            # Seed production from the least-strained starting structure saved
+            # alongside the restraint (see restraint_search.py). The restraint
+            # equilibrium values are trajectory averages, so starting from the
+            # pre-search input structure would leave the restraint badly strained
+            # at t=0 and can blow the simulation up as it is switched on. The
+            # saved structure is already sire-native decoupled and linked to the
+            # reference end state, and its atom ordering matches the restraint's
+            # anchor indices exactly, so it replaces the decoupled input above.
+            structure_file = Path(args.restraint_file).with_name(
+                Path(args.restraint_file).stem + "_structure.s3"
+            )
+            if structure_file.exists():
+                print(f"Seeding starting structure from {structure_file}")
+                system = sr.stream.load(str(structure_file))
+            else:
+                print(
+                    f"Warning: no starting structure found at {structure_file}; "
+                    "using the input structure (restraint may be strained at t=0)."
+                )
         else:
             boresch_restraints = load_boresch_restraints(
                 system, args.restraint_file, temp_value
