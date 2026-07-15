@@ -258,6 +258,7 @@ production-settings:
     # VRAM is needed. For single-GPU or low-memory setups, use "standard" instead.
     runner: repex
     gpus_per_job: 1           # Number of GPUs per job (repex distributes windows across GPUs)
+    use_dispersion_correction: false  # GROMACS applies this by default (DispCorr = EnerPres); SOMD2 does not
 
 # Analysis settings
 # -----------------

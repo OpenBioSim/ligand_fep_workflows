@@ -587,6 +587,11 @@
               "minimum": 1,
               "description": "Number of neighbouring lambda windows for energy evaluation. Unset = all windows (full MBAR). 1 = BAR. Intermediate values trade accuracy for speed."
             },
+            "use_dispersion_correction": {
+              "type": "boolean",
+              "default": false,
+              "description": "Enable the long-range LJ dispersion correction (SOMD2 default: disabled). GROMACS applies this by default; SOMD2 does not."
+            },
             "restraint_style": {
               "type": "string",
               "enum": ["legacy", "native"],

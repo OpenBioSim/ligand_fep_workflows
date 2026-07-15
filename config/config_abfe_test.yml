@@ -150,6 +150,7 @@ production-settings:
     runner: standard
     gpus_per_job: 3
     perturbation_type: annihilate
+    use_dispersion_correction: false
 
 # Analysis settings (unchanged)
 analysis-settings:

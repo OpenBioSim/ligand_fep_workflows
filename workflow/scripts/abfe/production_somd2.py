@@ -162,6 +162,12 @@ def parse_args() -> argparse.Namespace:
         "None = all windows (full MBAR), 1 = BAR, 5 = intermediate.",
     )
     parser.add_argument(
+        "--use-dispersion-correction",
+        action="store_true",
+        default=False,
+        help="Enable the long-range LJ dispersion correction (SOMD2 default: disabled).",
+    )
+    parser.add_argument(
         "--restart",
         action="store_true",
         default=False,
@@ -387,6 +393,7 @@ def main():
         replica_exchange=(runner_type == "repex"),
         overwrite=True,
         restart=args.restart,
+        use_dispersion_correction=args.use_dispersion_correction,
     )
 
     # Step 6: Run SOMD2

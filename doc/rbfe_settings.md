@@ -205,6 +205,7 @@ production-settings:
     perturbable_constraint: h_bonds_not_heavy_perturbed
     runner: repex                   # "repex" (replica exchange) or "standard"
     gpus_per_job: 1                 # GPUs allocated per job
+    use_dispersion_correction: false  # Long-range LJ dispersion correction (GROMACS applies this by default; SOMD2 does not)
 ```
 
 Key SOMD2 options:
@@ -213,6 +214,7 @@ Key SOMD2 options:
 - `cutoff_type`: `RF` (reaction field) is faster and suitable for most use cases. `PME` is more rigorous but computationally more expensive.
 - `energy_frequency`: Controls how often energies are written for all lambda windows. Keep this fine-grained (1ps or similar) for accurate MBAR free energy estimates.
 - `num_energy_neighbours`: Number of neighbouring lambda windows for energy evaluation. Unset (default) evaluates at all windows (full MBAR). Set to `1` for BAR (adjacent windows only) or an intermediate value (e.g. `5`) to trade accuracy for speed. Omit this key for full MBAR.
+- `use_dispersion_correction`: Enables the long-range LJ dispersion correction (energy and pressure), applied beyond the vdW cutoff. SOMD2 does not apply this by default; GROMACS does (`DispCorr = EnerPres` whenever a box and water are present). Expected to have minimal effect and largely cancel between legs, but exposed for direct comparison against GROMACS.
 - `runner`: `repex` runs replica exchange Monte Carlo between lambda windows and requires one OpenMM context per window. Ensure sufficient total GPU VRAM. Use `standard` for single-GPU or memory-constrained setups.
 - `gpus_per_job`: Number of GPUs per job. For `repex` with many windows, increasing this can improve throughput.
 - Lambda window counts are determined per perturbation by `network_settings`, not set here.
