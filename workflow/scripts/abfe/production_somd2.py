@@ -52,7 +52,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--leg",
         type=str,
-        choices=["bound", "free"],
+        choices=["bound", "free", "vacuum"],
         required=True,
         help="Which leg of the calculation.",
     )
@@ -280,8 +280,32 @@ def main():
     bss_system = BSS.Stream.load(args.input)
     print(f"Loaded system with {bss_system.nMolecules()} molecules")
 
-    # Step 2: Convert to Sire format.
-    system = sr.system.System(bss_system._sire_object)
+    # Step 2: For the vacuum leg, extract the ligand and create a ligand-only
+    # system that retains the free leg box for PME electrostatic consistency.
+    if args.leg == "vacuum":
+        print("Vacuum leg: extracting ligand from free leg system...")
+        lig_bss = None
+        for mol in bss_system:
+            if mol.nResidues() == 1 and mol.nAtoms() > 5:
+                lig_bss = mol
+                print(f"  Ligand: {mol.nAtoms()} atoms")
+                break
+        if lig_bss is None:
+            raise ValueError("Could not identify ligand in BSS system")
+
+        # Create a single-molecule BSS system and copy the periodic box so
+        # that SOMD2 uses PME with identical box dimensions as the free/bound
+        # legs, keeping the self-energy contribution well-defined.
+        box_lengths, box_angles = bss_system.getBox()
+        vac_bss = BSS._SireWrappers.System([lig_bss])
+        vac_bss.setBox(box_lengths, box_angles)
+        print(f"  Box from free leg: {box_lengths}")
+
+        # Convert to Sire
+        system = sr.system.System(vac_bss._sire_object)
+    else:
+        # Step 2 (normal path): Convert to Sire format.
+        system = sr.system.System(bss_system._sire_object)
 
     # Step 3: Find the ligand and apply sire-native decoupling
     print("Applying sire-native decoupling...")

@@ -22,13 +22,14 @@ _restraint_style = config["production-settings"].get("somd2-settings", {}).get(
 )
 _native_restraint = _engine == "somd2" and _restraint_style == "native"
 _restraint_ext = "s3" if _native_restraint else "json"
+_run_vacuum_leg = config.get("run_vacuum_leg", False)
 
 
 # Replica barrier
 # ================
 #
-# Ensures ALL ligands complete both legs of replica N before any ligand
-# starts replica N+1. This guarantees at least one result per ligand
+# Ensures ALL ligands complete all required legs of replica N before any
+# ligand starts replica N+1. This guarantees at least one result per ligand
 # before any second replicas are run — prioritising results over throughput.
 
 rule replica_barrier:
@@ -40,6 +41,13 @@ rule replica_barrier:
         free=lambda wc: expand(
             f"{config['working_directory']}/production/{_engine}/{{ligand}}/free_{wc.replica}/.done",
             ligand=LIGANDS,
+        ),
+        vacuum=lambda wc: (
+            expand(
+                f"{config['working_directory']}/production/{_engine}/{{ligand}}/vacuum_{wc.replica}/.done",
+                ligand=LIGANDS,
+            )
+            if _run_vacuum_leg else []
         ),
     output:
         touch(
@@ -275,3 +283,119 @@ rule somd2_production_free:
             2>&1 | tee {log}
         touch {output.done}
         """
+
+
+# Vacuum leg production (SOMD2)
+# ==============================
+# Only included when run_vacuum_leg: true in config.
+# The vacuum leg annihilates intramolecular non-bonded interactions with the
+# free leg box retained for PME consistency.  Combined with the free leg it
+# gives AHFE = DG_vacuum - DG_free.
+
+if _run_vacuum_leg:
+    rule somd2_production_vacuum:
+        """
+        SOMD2 production for vacuum leg.
+
+        Loads the equilibrated free leg system, strips solvent, creates a
+        ligand-only system with the free leg periodic box for PME consistency,
+        applies sire-native decoupling, and runs SOMD2 without restraints.
+
+        Replica N waits for replica N-1's production to complete.
+        """
+        priority: 2
+        input:
+            system=Path(f"{config['working_directory']}/preparation/final")
+            / "{ligand}_free.bss",
+            prev_replica=lambda wc: [] if int(wc.replica) == 0 else [
+                f"{config['working_directory']}/production/{_engine}/.replica_{int(wc.replica) - 1}_barrier",
+            ],
+        output:
+            done=Path(
+                f"{config['working_directory']}/production/{_engine}/{{ligand}}/vacuum_{{replica}}/.done"
+            ),
+        threads:
+            config["simulation_threads"]
+        resources:
+            gpu=config["production-settings"].get("somd2-settings", {}).get("gpus_per_job", 1),
+            tasks_per_gpu=0
+        log:
+            Path(f"{config['working_directory']}/logs")
+            / "{ligand}_somd2_production_vacuum_{replica}.log",
+        params:
+            script=Path("workflow/scripts/abfe/production_somd2.py"),
+            runtime=lambda wc: config["production-settings"].get("somd2-settings", {}).get(
+                "runtime", "2ns"
+            ),
+            timestep=lambda wc: config["production-settings"].get("somd2-settings", {}).get(
+                "timestep", "4fs"
+            ),
+            temperature=lambda wc: config["production-settings"].get("somd2-settings", {}).get(
+                "temperature", "298K"
+            ),
+            cutoff_type=lambda wc: config["production-settings"].get("somd2-settings", {}).get(
+                "cutoff_type", "PME"
+            ),
+            cutoff=lambda wc: config["production-settings"].get("somd2-settings", {}).get(
+                "cutoff", "10A"
+            ),
+            num_lambda=lambda wc: config["production-settings"].get("somd2-settings", {}).get(
+                "num_lambda", 21
+            ),
+            energy_frequency=lambda wc: config["production-settings"].get("somd2-settings", {}).get(
+                "energy_frequency", "1ps"
+            ),
+            frame_frequency=lambda wc: config["production-settings"].get("somd2-settings", {}).get(
+                "frame_frequency", "500ps"
+            ),
+            checkpoint_frequency=lambda wc: config["production-settings"].get("somd2-settings", {}).get(
+                "checkpoint_frequency", "500ps"
+            ),
+            integrator=lambda wc: config["production-settings"].get("somd2-settings", {}).get(
+                "integrator", "langevin_middle"
+            ),
+            shift_delta=lambda wc: config["production-settings"].get("somd2-settings", {}).get(
+                "shift_delta", "2.25A"
+            ),
+            perturbable_constraint=lambda wc: config["production-settings"].get("somd2-settings", {}).get(
+                "perturbable_constraint", "h_bonds_not_heavy_perturbed"
+            ),
+            equilibration_time=lambda wc: config["production-settings"].get("somd2-settings", {}).get(
+                "equilibration_time", "20ps"
+            ),
+            runner=lambda wc: config["production-settings"].get("somd2-settings", {}).get(
+                "runner", "repex"
+            ),
+            perturbation_type=lambda wc: config["production-settings"].get("somd2-settings", {}).get(
+                "perturbation_type", "annihilate"
+            ),
+            restart=config["production-settings"].get("restart", False),
+            output_directory=lambda wc: Path(
+                f"{config['working_directory']}/production/{_engine}/{wc.ligand}/vacuum_{wc.replica}"
+            ),
+        shell:
+            """
+            echo "Running SOMD2 vacuum leg for {wildcards.ligand} replica {wildcards.replica}"
+            python {params.script} \
+                --input {input.system} \
+                --output-directory {params.output_directory} \
+                --leg vacuum \
+                --runtime {params.runtime} \
+                --timestep {params.timestep} \
+                --temperature {params.temperature} \
+                --cutoff-type {params.cutoff_type} \
+                --cutoff {params.cutoff} \
+                --num-lambda {params.num_lambda} \
+                --energy-frequency {params.energy_frequency} \
+                --frame-frequency {params.frame_frequency} \
+                --checkpoint-frequency {params.checkpoint_frequency} \
+                --integrator {params.integrator} \
+                --shift-delta {params.shift_delta} \
+                --perturbable-constraint {params.perturbable_constraint} \
+                --equilibration-time {params.equilibration_time} \
+                --runner {params.runner} \
+                --perturbation-type {params.perturbation_type} \
+                $([ "{params.restart}" = "True" ] && echo "--restart") \
+                2>&1 | tee {log}
+            touch {output.done}
+            """

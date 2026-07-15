@@ -12,6 +12,8 @@ marks a single ligand for complete decoupling from the environment.
 
 from pathlib import Path
 
+_run_vacuum_leg = config.get("run_vacuum_leg", False)
+
 
 rule abfe_prep_bound:
     """
@@ -86,3 +88,42 @@ rule abfe_prep_free:
             --hmr-factor {params.hmr_factor} \
             2>&1 | tee {log}
         """
+
+
+if _run_vacuum_leg:
+    rule abfe_prep_vacuum:
+        """
+        Prepare vacuum leg system for ABFE.
+
+        Extracts the ligand from the free leg equilibrated system and creates a
+        ligand-only system with no solvent box.  BioSimSpace generates GROMACS
+        MDP files using pseudo-PBC conditions (333.3 nm cutoff, Cut-off
+        coulombtype) which faithfully reproduce an infinite vacuum calculation.
+        """
+        input:
+            system=Path(f"{config['working_directory']}/preparation/final")
+            / "{ligand}_free.bss",
+        output:
+            prepared=Path(f"{config['working_directory']}/abfe_prepared")
+            / "{ligand}_vacuum.bss",
+        log:
+            Path(f"{config['working_directory']}/logs") / "{ligand}_abfe_prep_vacuum.log",
+        threads:
+            config["simulation_threads"]
+        resources:
+            mem_mb=5000
+        params:
+            script=Path("workflow/scripts/abfe/prepare_vacuum.py"),
+            output_directory=Path(f"{config['working_directory']}/abfe_prepared"),
+            hmr_factor=config["production-settings"].get("gromacs-settings", {}).get("hmr_factor", 3),
+        shell:
+            """
+            echo "Preparing vacuum leg for {wildcards.ligand}"
+            python {params.script} \
+                --input {input.system} \
+                --output-directory {params.output_directory} \
+                --ligand-name {wildcards.ligand} \
+                --engine gromacs \
+                --hmr-factor {params.hmr_factor} \
+                2>&1 | tee {log}
+            """

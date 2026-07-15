@@ -77,6 +77,8 @@ if _method == "rbfe":
 
 
 elif _method == "abfe":
+    _run_vacuum_leg = config.get("run_vacuum_leg", False)
+
     def get_all_analysis_files(wildcards):
         """Return all PMF file paths needed for final ABFE analysis."""
         num_replicas = config["production-settings"]["num_replicas"]
@@ -86,6 +88,8 @@ elif _method == "abfe":
             for replica in range(num_replicas):
                 pmf_files.append(f"{working_dir}/analysis/{_engine}/{ligand}/bound_{replica}/pmf.csv")
                 pmf_files.append(f"{working_dir}/analysis/{_engine}/{ligand}/free_{replica}/pmf.csv")
+                if _run_vacuum_leg:
+                    pmf_files.append(f"{working_dir}/analysis/{_engine}/{ligand}/vacuum_{replica}/pmf.csv")
         return pmf_files
 
 
@@ -241,16 +245,20 @@ elif _method == "abfe":
             working_dir = config["working_directory"],
             num_replicas = config["production-settings"]["num_replicas"],
             engine = _engine,
+            vacuum = config.get("run_vacuum_leg", False),
         run:
             import json
             ligands_json = json.dumps(LIGANDS)
-            shell(
+            cmd = (
                 f"python {params.script} "
                 f"--working-directory {params.working_dir} "
                 f"--ligands '{ligands_json}' "
                 f"--num-replicas {params.num_replicas} "
                 f"--engine {params.engine}"
             )
+            if params.vacuum:
+                cmd += " --vacuum"
+            shell(cmd)
 
     rule results:
         """
@@ -263,10 +271,11 @@ elif _method == "abfe":
             working_dir = config["working_directory"],
             num_replicas = config["production-settings"]["num_replicas"],
             engine = _engine,
+            vacuum = config.get("run_vacuum_leg", False),
         run:
             import json
             ligands_json = json.dumps(LIGANDS)
-            shell(
+            cmd = (
                 f"python {params.script} "
                 f"--working-directory {params.working_dir} "
                 f"--ligands '{ligands_json}' "
@@ -274,3 +283,6 @@ elif _method == "abfe":
                 f"--engine {params.engine} "
                 f"--results-only"
             )
+            if params.vacuum:
+                cmd += " --vacuum"
+            shell(cmd)

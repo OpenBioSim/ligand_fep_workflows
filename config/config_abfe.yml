@@ -19,6 +19,11 @@ protein_files: "workflow/inputs/protein/protein.*"
 # Working directory for all workflow outputs
 working_directory: "output/abfe"
 
+# Run vacuum leg (ligand-only annihilation) to compute the absolute
+# hydration free energy: AHFE = DG_vacuum - DG_free.
+# Default: false (bound + free legs only).
+run_vacuum_leg: false
+
 # Number of threads for simulations (important for GROMACS performance)
 simulation_threads: 5
 
@@ -285,7 +290,7 @@ production-settings:
     # (sire's own sire.restraints.boresch_search(), mirroring SOMD2's built-in
     # restraint auto-generation). See restraint_search_settings for "native"'s
     # protocol/frame_frequency options.
-    restraint_style: legacy
+    restraint_style: "native"
 
 # Analysis settings
 # -----------------

@@ -12,6 +12,7 @@ The binding free energy is computed as:
 from pathlib import Path
 
 _engine = config.get("engine", config["production-settings"].get("engine", "gromacs")).strip().lower()
+_run_vacuum_leg = config.get("run_vacuum_leg", False)
 
 
 def get_all_leg_pmfs(wildcards) -> list[str]:
@@ -26,14 +27,16 @@ def get_all_leg_pmfs(wildcards) -> list[str]:
     pmf_files = []
     for ligand in LIGANDS:
         for replica in range(num_replicas):
-            # Bound leg
             pmf_files.append(
                 f"{working_dir}/analysis/{_engine}/{ligand}/bound_{replica}/pmf.csv"
             )
-            # Free leg
             pmf_files.append(
                 f"{working_dir}/analysis/{_engine}/{ligand}/free_{replica}/pmf.csv"
             )
+            if _run_vacuum_leg:
+                pmf_files.append(
+                    f"{working_dir}/analysis/{_engine}/{ligand}/vacuum_{replica}/pmf.csv"
+                )
     return pmf_files
 
 
@@ -153,5 +156,8 @@ rule collate_abfe_analysis:
         if params.exp_results:
             cmd += f" --experimental-results {params.exp_results}"
             cmd += f" --experimental-units {params.exp_units}"
+
+        if _run_vacuum_leg:
+            cmd += " --vacuum"
 
         shell(f"{cmd} 2>&1 | tee {log}")
