@@ -374,6 +374,13 @@ does not have bonded restraint terms, so only `coul` and `vdw` are needed.
     # Steps between replica exchange attempts. Only used when runner: repex.
     repex-frequency: 1000
 
+    # Number of random exchanges to attempt per interval, passed as -nex to
+    # gmx mdrun. 0 gives GROMACS's default neighbor-only exchange scheme
+    # (adjacent lambda windows only); a large value (default) enables random
+    # exchange attempts between arbitrary replica pairs each interval, giving
+    # more thorough mixing across the whole ladder. Only used when runner: repex.
+    nex: 1000000
+
     free-leg-settings:
       runtime: 2ns
       timestep: 4fs          # Requires hmr_factor: 3
@@ -596,7 +603,11 @@ snakemake clean_production -s workflow/Snakefile --configfile config/config_abfe
    `gmx_mpi` and `mpirun` must be available in your environment. Ensure
    sufficient CPU cores and combined GPU VRAM for all windows simultaneously.
    Use `repex-frequency` to control exchange attempt frequency (MD steps;
-   default 1000).
+   default 1000). Use `nex` to control the exchange scheme: the default
+   (1000000) enables random exchange attempts between arbitrary replica pairs
+   each interval (matching BioSimSpace's `GromacsHREX` default); set `nex: 0`
+   to revert to GROMACS's own default neighbor-only exchange (adjacent lambda
+   windows only).
 
 5. **SOMD2 equilibration**: SOMD2 handles per-window equilibration internally
    via `equilibration_time`. No separate equilibration Snakemake rule is needed

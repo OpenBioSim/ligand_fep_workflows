@@ -317,6 +317,12 @@
               "default": 1000,
               "description": "Exchange attempt frequency in MD steps for GROMACS repex (default: 1000)."
             },
+            "nex": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 1000000,
+              "description": "Number of random exchanges to attempt at each exchange interval, passed as -nex to gmx mdrun (default: 1000000, matching BioSimSpace's GromacsHREX default). A value of 0 gives GROMACS's default neighbor-only exchange scheme (adjacent lambda windows only); any positive value enables random exchange attempts between arbitrary pairs of replicas each interval."
+            },
             "oversubscribe": {
               "type": "boolean",
               "default": true,
