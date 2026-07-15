@@ -268,6 +268,7 @@ Key GROMACS options:
 - `use-modified-dummies`: Same ghostly library corrections as SOMD2. Recommended for most perturbations.
 - `runner`: `repex` enables Hamiltonian replica exchange (HREX) using `gmx mdrun -multidir -replex`. `standard` (default) runs each lambda window independently.
 - `repex-frequency`: Number of MD steps between replica exchange attempts (default: 1000). Only used when `runner: repex`.
+- `nex`: Number of random exchanges to attempt per interval, passed as `-nex` to `gmx mdrun` (default: 1000000, matching BioSimSpace's `GromacsHREX` default). `0` gives GROMACS's own default neighbor-only exchange (adjacent lambda windows only); any positive value enables random exchange attempts between arbitrary replica pairs each interval, giving more thorough mixing across the whole ladder. Only used when `runner: repex`.
 - Free and bound legs can have different runtimes if needed.
 
 #### GROMACS HREX (Hamiltonian Replica Exchange)
@@ -278,6 +279,7 @@ When `runner: repex`, all lambda windows are run together in a single `gmx_mpi m
   gromacs-settings:
     runner: repex           # "repex" or "standard" (default: standard)
     repex-frequency: 1000   # Steps between exchange attempts (default: 1000)
+    nex: 1000000            # Random exchanges per interval; 0 = neighbor-only (default: 1000000)
 ```
 
 ### AMBER Settings
@@ -414,7 +416,7 @@ All outputs are written under `working_directory` (e.g. `output/rbfe/`).
 
 **SOMD2 runner**: `repex` performs replica exchange Monte Carlo moves between lambda windows. It allocates one OpenMM context per window at startup, so total GPU VRAM must be sufficient to hold all windows simultaneously. For single-GPU or memory-limited jobs, use `runner: standard`.
 
-**GROMACS HREX**: Set `runner: repex` under `gromacs-settings` to enable Hamiltonian replica exchange. GROMACS `-multidir` requires an MPI-enabled build — the workflow calls `mpirun -np N gmx_mpi mdrun`. Ensure `gmx_mpi` and `mpirun` are available in your environment. One MPI rank is spawned per lambda window; ensure sufficient CPU cores and GPU memory. `repex-frequency` controls how often exchange moves are attempted (in MD steps).
+**GROMACS HREX**: Set `runner: repex` under `gromacs-settings` to enable Hamiltonian replica exchange. GROMACS `-multidir` requires an MPI-enabled build — the workflow calls `mpirun -np N gmx_mpi mdrun`. Ensure `gmx_mpi` and `mpirun` are available in your environment. One MPI rank is spawned per lambda window; ensure sufficient CPU cores and GPU memory. `repex-frequency` controls how often exchange moves are attempted (in MD steps); `nex` controls the exchange scheme itself — the default (1000000) attempts random exchanges between arbitrary replica pairs each interval, while `nex: 0` reverts to GROMACS's default neighbor-only exchange.
 
 **AMBER HREX**: Set `runner: repex` under `amber-settings` and provide the path to `pmemd.MPI` via `exe`. The AMBER HREX runner uses native MPI (`mpirun pmemd.MPI -rem 3`) and runs the full min/eq/production pipeline inline rather than being orchestrated by Snakemake stages.
 

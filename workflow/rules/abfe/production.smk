@@ -21,6 +21,7 @@ from pathlib import Path
 _engine = config.get("engine", config["production-settings"].get("engine", "gromacs")).strip().lower()
 _gromacs_runner = config["production-settings"].get("gromacs-settings", {}).get("runner", "standard").strip().lower()
 _repex_frequency = config["production-settings"].get("gromacs-settings", {}).get("repex-frequency", 1000)
+_nex = config["production-settings"].get("gromacs-settings", {}).get("nex", 1000000)
 _oversubscribe = config["production-settings"].get("gromacs-settings", {}).get("oversubscribe", True)
 _gromacs_gpus_per_job = config["production-settings"].get("gromacs-settings", {}).get("gpus_per_job", 1)
 _run_vacuum_leg = config.get("run_vacuum_leg", False)
@@ -404,7 +405,7 @@ rule production_bound:
                 f"-mca opal_cuda_support 1 -x OMP_NUM_THREADS=1 "
                 f"-np {n_replicas} gmx_mpi mdrun -deffnm gromacs "
                 f"-bonded gpu -cpt -1 "
-                f"-c gromacs_out.gro -multidir {lam_dirs} -replex {_repex_frequency} "
+                f"-c gromacs_out.gro -multidir {lam_dirs} -replex {_repex_frequency} -nex {_nex} "
                 f"> mdrun.log 2>&1"
             )
         else:
@@ -516,7 +517,7 @@ rule production_free:
                 f"-mca opal_cuda_support 1 -x OMP_NUM_THREADS=1 "
                 f"-np {n_replicas} gmx_mpi mdrun -deffnm gromacs "
                 f"-bonded gpu -cpt -1 "
-                f"-c gromacs_out.gro -multidir {lam_dirs} -replex {_repex_frequency} "
+                f"-c gromacs_out.gro -multidir {lam_dirs} -replex {_repex_frequency} -nex {_nex} "
                 f"> mdrun.log 2>&1"
             )
         else:
@@ -698,7 +699,7 @@ if _run_vacuum_leg:
                     f"-mca opal_cuda_support 1 -x OMP_NUM_THREADS=1 "
                     f"-np {n_replicas} gmx_mpi mdrun -deffnm gromacs "
                     f"-bonded gpu -cpt -1 "
-                    f"-c gromacs_out.gro -multidir {lam_dirs} -replex {_repex_frequency} "
+                    f"-c gromacs_out.gro -multidir {lam_dirs} -replex {_repex_frequency} -nex {_nex} "
                     f"> mdrun.log 2>&1"
                 )
             else:

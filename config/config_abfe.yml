@@ -239,6 +239,9 @@ production-settings:
     runner: repex
     # Number of MD steps between replica exchange attempts (repex only).
     repex-frequency: 1000
+    # Number of random exchanges to attempt per interval (-nex). 0 = neighbor-only
+    # exchange; a large value (default) gives thorough random-pair mixing instead.
+    nex: 1000000
     oversubscribe: true
     # Number of GPUs per production job (repex distributes replicas across GPUs).
     gpus_per_job: 3
