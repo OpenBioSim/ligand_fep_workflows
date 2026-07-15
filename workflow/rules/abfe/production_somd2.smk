@@ -140,6 +140,9 @@ rule somd2_production_bound:
         num_energy_neighbours=lambda wc: config["production-settings"].get("somd2-settings", {}).get(
             "num_energy_neighbours", None
         ),
+        use_dispersion_correction=lambda wc: config["production-settings"].get("somd2-settings", {}).get(
+            "use_dispersion_correction", False
+        ),
         restart=config["production-settings"].get("restart", False),
         output_directory=lambda wc: Path(
             f"{config['working_directory']}/production/{_engine}/{wc.ligand}/bound_{wc.replica}"
@@ -168,6 +171,7 @@ rule somd2_production_bound:
             --runner {params.runner} \
             --perturbation-type {params.perturbation_type} \
             $([ "{params.num_energy_neighbours}" != "None" ] && echo "--num-energy-neighbours {params.num_energy_neighbours}") \
+            $([ "{params.use_dispersion_correction}" = "True" ] && echo "--use-dispersion-correction") \
             $([ "{params.restart}" = "True" ] && echo "--restart") \
             2>&1 | tee {log}
         touch {output.done}
@@ -253,6 +257,9 @@ rule somd2_production_free:
         perturbation_type=lambda wc: config["production-settings"].get("somd2-settings", {}).get(
             "perturbation_type", "annihilate"
         ),
+        use_dispersion_correction=lambda wc: config["production-settings"].get("somd2-settings", {}).get(
+            "use_dispersion_correction", False
+        ),
         restart=config["production-settings"].get("restart", False),
         output_directory=lambda wc: Path(
             f"{config['working_directory']}/production/{_engine}/{wc.ligand}/free_{wc.replica}"
@@ -279,6 +286,7 @@ rule somd2_production_free:
             --equilibration-time {params.equilibration_time} \
             --runner {params.runner} \
             --perturbation-type {params.perturbation_type} \
+            $([ "{params.use_dispersion_correction}" = "True" ] && echo "--use-dispersion-correction") \
             $([ "{params.restart}" = "True" ] && echo "--restart") \
             2>&1 | tee {log}
         touch {output.done}
@@ -369,6 +377,9 @@ if _run_vacuum_leg:
             perturbation_type=lambda wc: config["production-settings"].get("somd2-settings", {}).get(
                 "perturbation_type", "annihilate"
             ),
+            use_dispersion_correction=lambda wc: config["production-settings"].get("somd2-settings", {}).get(
+                "use_dispersion_correction", False
+            ),
             restart=config["production-settings"].get("restart", False),
             output_directory=lambda wc: Path(
                 f"{config['working_directory']}/production/{_engine}/{wc.ligand}/vacuum_{wc.replica}"
@@ -395,6 +406,7 @@ if _run_vacuum_leg:
                 --equilibration-time {params.equilibration_time} \
                 --runner {params.runner} \
                 --perturbation-type {params.perturbation_type} \
+                $([ "{params.use_dispersion_correction}" = "True" ] && echo "--use-dispersion-correction") \
                 $([ "{params.restart}" = "True" ] && echo "--restart") \
                 2>&1 | tee {log}
             touch {output.done}

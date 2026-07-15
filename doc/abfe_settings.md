@@ -468,6 +468,13 @@ evaluations is `2 * num_lambda`.
     # decouple:   removes only intermolecular non-bonded interactions, preserving
     #             intramolecular LJ terms via kappa=0 on ghost/ghost and ghost-14 forces.
     perturbation_type: annihilate
+
+    # Long-range LJ dispersion correction (energy and pressure), applied beyond
+    # the vdW cutoff. SOMD2 does not apply this by default, unlike GROMACS
+    # (which sets DispCorr = EnerPres whenever a box and water are present).
+    # Expected to have minimal effect and largely cancel between the bound and
+    # free legs, but exposed here for direct comparison against GROMACS.
+    use_dispersion_correction: false
 ```
 
 ---

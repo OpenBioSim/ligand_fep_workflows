@@ -134,6 +134,7 @@ production-settings:
     # GPUs, "repex" is preferred but requires enough VRAM for all lambda windows.
     runner: standard
     gpus_per_job: 1
+    use_dispersion_correction: false
 
 analysis-settings:
   backend: cinnabar
