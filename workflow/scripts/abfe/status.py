@@ -208,7 +208,7 @@ def calculate_binding_energy(
 ) -> Optional[float]:
     if bound_dg is None or free_dg is None or correction is None:
         return None
-    return free_dg - bound_dg + correction
+    return free_dg - bound_dg - correction
 
 
 def get_correction(restraints_dir: Path, ligand: str) -> Optional[float]:

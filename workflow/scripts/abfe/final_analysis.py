@@ -5,9 +5,12 @@ ABFE final analysis script.
 This script collates results from ABFE legs and computes the absolute
 binding free energy for each ligand. The thermodynamic cycle is:
 
-    DG_bind = DG_free - DG_bound + DG_correction
+    DG_bind = DG_free - DG_bound - DG_correction
 
-Where DG_correction is the analytical Boresch restraint correction.
+Where DG_correction is the analytical Boresch restraint correction returned
+by sire/BSS (the free energy of releasing restraints from the decoupled ligand
+to standard state — negative for tight restraints). Subtracting it corrects
+the bound leg for the restraint contribution.
 
 The script:
     1. Reads PMF files from bound and free legs
@@ -154,7 +157,7 @@ def calculate_binding_free_energy(
     Calculate the absolute binding free energy.
 
     The thermodynamic cycle is:
-        DG_bind = DG_free - DG_bound + DG_correction
+        DG_bind = DG_free - DG_bound - DG_correction
 
     Args:
         bound_dg: DG for bound leg (full transformation)
@@ -164,7 +167,7 @@ def calculate_binding_free_energy(
     Returns:
         Absolute binding free energy in kcal/mol
     """
-    dg_bind = free_dg - bound_dg + correction
+    dg_bind = free_dg - bound_dg - correction
     return dg_bind
 
 
