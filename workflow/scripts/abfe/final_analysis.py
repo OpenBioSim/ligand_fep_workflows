@@ -5,9 +5,12 @@ ABFE final analysis script.
 This script collates results from ABFE legs and computes the absolute
 binding free energy for each ligand. The thermodynamic cycle is:
 
-    DG_bind = DG_free - DG_bound + DG_correction
+    DG_bind = DG_free - DG_bound - DG_correction
 
-Where DG_correction is the analytical Boresch restraint correction.
+Where DG_correction is the analytical Boresch restraint correction returned
+by sire/BSS (the free energy of releasing restraints from the decoupled ligand
+to standard state — negative for tight restraints). Subtracting it corrects
+the bound leg for the restraint contribution.
 
 The script:
     1. Reads PMF files from bound and free legs
@@ -98,6 +101,12 @@ def parse_args() -> argparse.Namespace:
         default=300.0,
         help="Temperature in Kelvin for unit conversions.",
     )
+    parser.add_argument(
+        "--vacuum",
+        action="store_true",
+        default=False,
+        help="Vacuum leg PMFs are available; compute AHFE = DG_vacuum - DG_free.",
+    )
     return parser.parse_args()
 
 
@@ -154,7 +163,7 @@ def calculate_binding_free_energy(
     Calculate the absolute binding free energy.
 
     The thermodynamic cycle is:
-        DG_bind = DG_free - DG_bound + DG_correction
+        DG_bind = DG_free - DG_bound - DG_correction
 
     Args:
         bound_dg: DG for bound leg (full transformation)
@@ -164,7 +173,7 @@ def calculate_binding_free_energy(
     Returns:
         Absolute binding free energy in kcal/mol
     """
-    dg_bind = free_dg - bound_dg + correction
+    dg_bind = free_dg - bound_dg - correction
     return dg_bind
 
 
@@ -370,21 +379,39 @@ def main():
             # Propagate error
             error = propagate_error(bound_err, free_err)
 
-            results.append(
-                {
-                    "ligand": ligand,
-                    "replica": replica,
-                    "bound_dg": bound_dg,
-                    "free_dg": free_dg,
-                    "correction": correction,
-                    "DG_bind": dg_bind,
-                    "error": error,
-                }
-            )
+            row = {
+                "ligand": ligand,
+                "replica": replica,
+                "bound_dg": bound_dg,
+                "free_dg": free_dg,
+                "correction": correction,
+                "DG_bind": dg_bind,
+                "error": error,
+            }
 
-            print(
-                f"  Replica {replica}: DG_bind = {dg_bind:.4f} +/- {error:.4f} kcal/mol"
-            )
+            # Vacuum leg — compute AHFE = DG_vacuum - DG_free
+            # DG_vacuum: cost to annihilate intramolecular non-bonded in vacuum
+            # DG_free:   cost to annihilate all non-bonded in solution
+            # AHFE (hydration FE) = DG_vacuum - DG_free  (negative = prefers water)
+            if args.vacuum:
+                vac_dg, vac_err = read_leg_dg(
+                    analysis_dir / ligand / f"vacuum_{replica}" / "pmf.csv"
+                )
+                ahfe = vac_dg - free_dg
+                ahfe_err = propagate_error(vac_err, free_err)
+                row["vacuum_dg"] = vac_dg
+                row["AHFE"] = ahfe
+                row["AHFE_error"] = ahfe_err
+                print(
+                    f"  Replica {replica}: DG_bind = {dg_bind:.4f} +/- {error:.4f} kcal/mol, "
+                    f"AHFE = {ahfe:.4f} +/- {ahfe_err:.4f} kcal/mol"
+                )
+            else:
+                print(
+                    f"  Replica {replica}: DG_bind = {dg_bind:.4f} +/- {error:.4f} kcal/mol"
+                )
+
+            results.append(row)
 
     # Convert to DataFrame
     df_all = pd.DataFrame(results)
@@ -393,22 +420,29 @@ def main():
     df_all.to_csv(output_dir / "detailed_abfe_results.csv", index=False)
 
     # Average over replicas
+    agg_dict = {
+        "DG_bind": "mean",
+        "error": lambda x: np.sqrt(np.sum(x**2)) / len(x),  # SEM
+        "bound_dg": "mean",
+        "free_dg": "mean",
+        "correction": "first",
+    }
+    if args.vacuum:
+        agg_dict["vacuum_dg"] = "mean"
+        agg_dict["AHFE"] = "mean"
+        agg_dict["AHFE_error"] = lambda x: np.sqrt(np.sum(x**2)) / len(x)
+
     df_summary = (
         df_all.groupby("ligand")
-        .agg(
-            {
-                "DG_bind": "mean",
-                "error": lambda x: np.sqrt(np.sum(x**2)) / len(x),  # SEM
-                "bound_dg": "mean",
-                "free_dg": "mean",
-                "correction": "first",
-            }
-        )
+        .agg(agg_dict)
         .reset_index()
     )
 
     # Add standard deviation over replicas
     df_summary["DG_bind_std"] = df_all.groupby("ligand")["DG_bind"].std(ddof=0).values
+    if args.vacuum:
+        df_summary["AHFE_std"] = df_all.groupby("ligand")["AHFE"].std(ddof=0).values
+        df_summary["AHFE_error"] = np.maximum(df_summary["AHFE_error"], df_summary["AHFE_std"])
 
     # Final error is max of propagated error and replica std
     df_summary["error"] = np.maximum(df_summary["error"], df_summary["DG_bind_std"])
@@ -417,7 +451,10 @@ def main():
     df_summary.to_csv(output_dir / "final_abfe_results.csv", index=False)
 
     print("\n=== Summary Results ===")
-    print(df_summary[["ligand", "DG_bind", "error"]].to_string(index=False))
+    summary_cols = ["ligand", "DG_bind", "error"]
+    if args.vacuum:
+        summary_cols += ["AHFE", "AHFE_error"]
+    print(df_summary[summary_cols].to_string(index=False))
 
     # Load experimental data if provided
     df_exp = None

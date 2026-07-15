@@ -21,7 +21,7 @@ protein.
 The binding free energy is:
 
 ```
-DG_bind = DG_free - DG_bound + correction
+DG_bind = DG_free - DG_bound - correction
 ```
 
 where `correction` is the analytical standard-state correction for releasing

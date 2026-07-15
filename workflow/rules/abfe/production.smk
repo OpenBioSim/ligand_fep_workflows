@@ -23,6 +23,7 @@ _gromacs_runner = config["production-settings"].get("gromacs-settings", {}).get(
 _repex_frequency = config["production-settings"].get("gromacs-settings", {}).get("repex-frequency", 1000)
 _oversubscribe = config["production-settings"].get("gromacs-settings", {}).get("oversubscribe", True)
 _gromacs_gpus_per_job = config["production-settings"].get("gromacs-settings", {}).get("gpus_per_job", 1)
+_run_vacuum_leg = config.get("run_vacuum_leg", False)
 
 
 def _calc_nsteps_abfe(leg: str) -> int:
@@ -59,6 +60,13 @@ rule replica_barrier:
         free=lambda wc: expand(
             f"{config['working_directory']}/production/{_engine}/{{ligand}}/free_{wc.replica}/.done",
             ligand=LIGANDS,
+        ),
+        vacuum=lambda wc: (
+            expand(
+                f"{config['working_directory']}/production/{_engine}/{{ligand}}/vacuum_{wc.replica}/.done",
+                ligand=LIGANDS,
+            )
+            if _run_vacuum_leg else []
         ),
     output:
         touch(
@@ -545,3 +553,181 @@ rule production_free:
 
         # Mark as complete
         shell(f"touch {output.done}")
+
+
+# Vacuum leg (GROMACS)
+# ====================
+# Only included when run_vacuum_leg: true in config.
+# Ligands extracted from the free leg are already equilibrated, so only a
+# brief minimisation is run before production — no heating or NPT is needed.
+# BSS generates pseudo-PBC MDP files (333.3 nm cutoff, Cut-off coulombtype)
+# for the ligand-only system.
+
+if _run_vacuum_leg:
+    rule production_vacuum:
+        """
+        Production for vacuum leg (GROMACS).
+
+        Sets up lambda directories via BioSimSpace, runs per-lambda
+        minimisation to remove any bad contacts, then runs production.
+        Heating and NPT equilibration are skipped — the ligand geometry
+        is already well-defined from the free leg.
+        """
+        priority: 2
+        input:
+            system=Path(f"{config['working_directory']}/abfe_prepared")
+            / "{ligand}_vacuum.bss",
+            prev_replica=lambda wc: [] if int(wc.replica) == 0 else [
+                f"{config['working_directory']}/production/{_engine}/.replica_{int(wc.replica) - 1}_barrier",
+            ],
+        output:
+            done=Path(
+                f"{config['working_directory']}/production/{_engine}/{{ligand}}/vacuum_{{replica}}/.done"
+            ),
+        threads:
+            config["simulation_threads"]
+        resources:
+            gpu=_gromacs_gpus_per_job if _gromacs_runner == "repex" else 1
+        log:
+            Path(f"{config['working_directory']}/logs")
+            / "{ligand}_production_vacuum_{replica}.log",
+        params:
+            script=Path("workflow/scripts/abfe/production.py"),
+            # Reuse the free leg lambda schedule for the vacuum leg
+            lambda_schedule=lambda wc: config["production-settings"]["gromacs-settings"]["lambda_schedules"]["free"],
+            runtime=lambda wc: config["production-settings"]["gromacs-settings"].get(
+                "vacuum-leg-settings",
+                config["production-settings"]["gromacs-settings"]["free-leg-settings"],
+            ).get("runtime", "2ns"),
+            timestep=lambda wc: config["production-settings"]["gromacs-settings"].get(
+                "vacuum-leg-settings",
+                config["production-settings"]["gromacs-settings"]["free-leg-settings"],
+            ).get("timestep", "4fs"),
+            temperature=lambda wc: config["production-settings"]["gromacs-settings"].get(
+                "vacuum-leg-settings",
+                config["production-settings"]["gromacs-settings"]["free-leg-settings"],
+            ).get("temperature", "300K"),
+            pressure=lambda wc: config["production-settings"]["gromacs-settings"].get(
+                "vacuum-leg-settings",
+                config["production-settings"]["gromacs-settings"]["free-leg-settings"],
+            ).get("pressure", "1bar"),
+            report_interval=lambda wc: config["production-settings"]["gromacs-settings"].get(
+                "vacuum-leg-settings",
+                config["production-settings"]["gromacs-settings"]["free-leg-settings"],
+            ).get("report-interval", "1ps"),
+            restart_interval=lambda wc: config["production-settings"]["gromacs-settings"].get(
+                "vacuum-leg-settings",
+                config["production-settings"]["gromacs-settings"]["free-leg-settings"],
+            ).get("restart-interval", "500ps"),
+        run:
+            import json
+            from pathlib import Path
+
+            prod_dir = Path(str(output.done)).resolve().parent
+            prod_dir.mkdir(parents=True, exist_ok=True)
+            setup_dir = prod_dir / "_setup"
+
+            # Write lambda schedule to a temp file
+            schedule_file = setup_dir / "_lambda_schedule.json"
+            setup_dir.mkdir(parents=True, exist_ok=True)
+            with open(schedule_file, "w") as f:
+                json.dump(params.lambda_schedule, f)
+
+            # BSS setup phase (creates min/heat/eq/production directories)
+            shell(
+                f"echo 'Setting up vacuum leg for {wildcards.ligand} replica {wildcards.replica}' && "
+                f"python {params.script} "
+                f"--input {input.system} "
+                f"--output-directory {setup_dir} "
+                f"--ligand-name {wildcards.ligand} "
+                f"--leg free "
+                f"--lambda-schedule-file {schedule_file} "
+                f"--runtime {params.runtime} "
+                f"--timestep {params.timestep} "
+                f"--temperature {params.temperature} "
+                f"--pressure {params.pressure} "
+                f"--report-interval {params.report_interval} "
+                f"--restart-interval {params.restart_interval} "
+                f"--runner {_gromacs_runner} "
+                f"--repex-frequency {_repex_frequency} "
+                + ("--oversubscribe " if _oversubscribe else "")
+                + f"2>&1 | tee {log}"
+            )
+            schedule_file.unlink(missing_ok=True)
+
+            # Discover lambda values from minimisation directories
+            outdir_path_min = setup_dir / "minimisation"
+            lambda_values = [
+                d.name.split("_")[1]
+                for d in outdir_path_min.glob("lambda_*")
+                if d.is_dir()
+            ]
+            if not lambda_values:
+                raise FileNotFoundError(f"No minimisation directories found in {outdir_path_min}")
+            lambda_values.sort(key=float)
+
+            restart = config["production-settings"].get("restart", False)
+
+            # Minimisation only — no heating or NPT equilibration for vacuum
+            print("Minimising")
+            for lambda_value in lambda_values:
+                d = setup_dir / "minimisation" / f"lambda_{lambda_value}"
+                shell(f"cd {d} && gmx grompp -f gromacs.mdp -c gromacs_ref.gro -p gromacs.top -o gromacs.tpr -maxwarn 1 2>&1 | tee grompp.log")
+                shell(f"cd {d} && gmx mdrun -ntmpi 1 -deffnm gromacs 2>&1 | tee mdrun.log")
+
+            print("Running vacuum production")
+            if _gromacs_runner == "repex":
+                if restart:
+                    raise NotImplementedError("Restart is not yet supported for GROMACS repex.")
+                shared_top = setup_dir / "gromacs.top"
+                for lambda_value in lambda_values:
+                    lam_prod = prod_dir / f"lambda_{lambda_value}"
+                    lam_prod.mkdir(exist_ok=True)
+                    min_gro = setup_dir / "minimisation" / f"lambda_{lambda_value}" / "gromacs.gro"
+                    mdp_file = setup_dir / f"lambda_{lambda_value}" / "gromacs.mdp"
+                    top_file = shared_top if shared_top.exists() else setup_dir / f"lambda_{lambda_value}" / "gromacs.top"
+                    shell(
+                        f"gmx grompp -f {mdp_file} -c {min_gro} -p {top_file} "
+                        f"-o {lam_prod}/gromacs.tpr -maxwarn 1 "
+                        f"> {lam_prod}/grompp.log 2>&1"
+                    )
+                n_replicas = len(lambda_values)
+                lam_dirs = " ".join(str(prod_dir / f"lambda_{lv}") for lv in lambda_values)
+                shell(
+                    f"cd {prod_dir} && mpirun {'--oversubscribe ' if _oversubscribe else ''}"
+                    f"-mca opal_cuda_support 1 -x OMP_NUM_THREADS=1 "
+                    f"-np {n_replicas} gmx_mpi mdrun -deffnm gromacs "
+                    f"-bonded gpu -cpt -1 "
+                    f"-c gromacs_out.gro -multidir {lam_dirs} -replex {_repex_frequency} "
+                    f"> mdrun.log 2>&1"
+                )
+            else:
+                for lambda_value in lambda_values:
+                    lam_prod = prod_dir / f"lambda_{lambda_value}"
+                    lam_prod.mkdir(exist_ok=True)
+                    eq_setup_dir = setup_dir / f"lambda_{lambda_value}"
+                    cpt_file = lam_prod / "gromacs.cpt"
+                    gro_file = lam_prod / "gromacs.gro"
+
+                    if restart and cpt_file.exists() and gro_file.exists():
+                        new_nsteps = _calc_nsteps_abfe("vacuum")
+                        _write_extended_mdp(
+                            eq_setup_dir / "gromacs.mdp", lam_prod / "gromacs.mdp", new_nsteps
+                        )
+                        shell(
+                            f"cd {eq_setup_dir} && "
+                            f"gmx grompp -f {lam_prod}/gromacs.mdp -c {gro_file} -t {cpt_file} "
+                            f"-p gromacs.top -o {lam_prod}/gromacs.tpr -maxwarn 1 "
+                            f"> {lam_prod}/grompp.log 2>&1"
+                        )
+                    else:
+                        min_gro = setup_dir / "minimisation" / f"lambda_{lambda_value}" / "gromacs.gro"
+                        shell(
+                            f"cd {eq_setup_dir} && "
+                            f"gmx grompp -f gromacs.mdp -c {min_gro} -p gromacs.top "
+                            f"-o {lam_prod}/gromacs.tpr -maxwarn 1 "
+                            f"> {lam_prod}/grompp.log 2>&1"
+                        )
+                    shell(f"cd {lam_prod} && gmx mdrun -ntmpi 1 -deffnm gromacs > mdrun.log 2>&1")
+
+            shell(f"touch {output.done}")

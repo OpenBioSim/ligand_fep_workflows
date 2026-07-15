@@ -22,6 +22,11 @@
       "type": "string",
       "description": "Working directory for all workflow outputs."
     },
+    "run_vacuum_leg": {
+      "type": "boolean",
+      "default": false,
+      "description": "Run vacuum leg (ligand-only annihilation) to compute AHFE = DG_vacuum - DG_free."
+    },
     "simulation_threads": {
       "type": "integer",
       "minimum": 1,
@@ -450,6 +455,44 @@
                   "type": "string",
                   "pattern": "^[0-9]+(\\.[0-9]+)?(fs|ps|ns)$",
                   "description": "Checkpoint saving interval (e.g., '500ps'). Converted to steps internally."
+                }
+              },
+              "required": ["runtime"],
+              "additionalProperties": false
+            },
+            "vacuum-leg-settings": {
+              "type": "object",
+              "description": "Optional overrides for vacuum leg (defaults to free-leg-settings if omitted).",
+              "properties": {
+                "runtime": {
+                  "type": "string",
+                  "pattern": "^[0-9]+(ps|ns)$",
+                  "description": "Production runtime per window."
+                },
+                "timestep": {
+                  "type": "string",
+                  "pattern": "^[0-9]+(fs)$",
+                  "description": "Integration timestep."
+                },
+                "temperature": {
+                  "type": "string",
+                  "pattern": "^[0-9]+(\\.[0-9]+)?(K)$",
+                  "description": "Simulation temperature."
+                },
+                "pressure": {
+                  "type": "string",
+                  "pattern": "^[0-9]+(\\.[0-9]+)?(bar|atm)$",
+                  "description": "Simulation pressure (ignored for vacuum; no barostat)."
+                },
+                "report-interval": {
+                  "type": "string",
+                  "pattern": "^[0-9]+(\\.[0-9]+)?(fs|ps|ns)$",
+                  "description": "Energy reporting interval."
+                },
+                "restart-interval": {
+                  "type": "string",
+                  "pattern": "^[0-9]+(\\.[0-9]+)?(fs|ps|ns)$",
+                  "description": "Checkpoint saving interval."
                 }
               },
               "required": ["runtime"],

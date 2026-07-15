@@ -123,6 +123,12 @@ def parse_args() -> argparse.Namespace:
         help="Engine name for production/analysis directory namespacing.",
     )
     parser.add_argument(
+        "--vacuum",
+        action="store_true",
+        default=False,
+        help="Vacuum leg is enabled; show vacuum production and AHFE columns.",
+    )
+    parser.add_argument(
         "--no-color",
         action="store_true",
         help="Disable colored output.",
@@ -208,7 +214,7 @@ def calculate_binding_energy(
 ) -> Optional[float]:
     if bound_dg is None or free_dg is None or correction is None:
         return None
-    return free_dg - bound_dg + correction
+    return free_dg - bound_dg - correction
 
 
 def get_correction(restraints_dir: Path, ligand: str) -> Optional[float]:
@@ -380,17 +386,22 @@ def print_preparation_status(
     print_table_header(cols, colors)
 
     for ligand in ligands:
-        setup_free = check_file_exists(
-            working_dir / "setup" / f"{ligand}_free.bss", colors
-        )
-        setup_bound = check_file_exists(
-            working_dir / "setup" / f"{ligand}_bound.bss", colors
-        )
-        setup_status = (
-            status_ok(colors)
-            if "[OK]" in setup_free and "[OK]" in setup_bound
-            else status_missing(colors)
-        )
+        # Setup: check local setup/ dir first. If it doesn't exist the
+        # preparation/ directory is likely symlinked from a parent run, in
+        # which case setup completed there — treat it as OK if final/ exists.
+        setup_dir = working_dir / "setup"
+        prep_final = working_dir / "preparation" / "final"
+        if setup_dir.exists():
+            ok = (
+                (setup_dir / f"{ligand}_free.bss").exists()
+                and (setup_dir / f"{ligand}_bound.bss").exists()
+            )
+        else:
+            ok = (
+                (prep_final / f"{ligand}_free.bss").exists()
+                and (prep_final / f"{ligand}_bound.bss").exists()
+            )
+        setup_status = status_ok(colors) if ok else status_missing(colors)
 
         prep_free = check_file_exists(
             working_dir / "preparation" / "final" / f"{ligand}_free.bss", colors
@@ -398,9 +409,14 @@ def print_preparation_status(
         prep_bound = check_file_exists(
             working_dir / "preparation" / "final" / f"{ligand}_bound.bss", colors
         )
-        restraint = check_file_exists(
-            working_dir / "restraints" / f"{ligand}_restraint.json", colors
+
+        # Restraint: accept either legacy .json or native .s3
+        restraints_dir = working_dir / "restraints"
+        restraint_ok = (
+            (restraints_dir / f"{ligand}_restraint.json").exists()
+            or (restraints_dir / f"{ligand}_restraint.s3").exists()
         )
+        restraint = status_ok(colors) if restraint_ok else status_missing(colors)
 
         cells = [
             pad(ligand, COL_LABEL),
@@ -432,17 +448,16 @@ def print_production_status(
     ligands: list[str],
     num_replicas: int,
     engine: str,
+    vacuum: bool,
     colors: Colors,
 ) -> None:
     is_somd2 = engine == "somd2"
 
     if is_somd2:
         print_header("PRODUCTION STATUS", colors)
-        cols = [
-            ("Ligand", COL_LABEL),
-            ("Bound", COL_WIDE),
-            ("Free", COL_WIDE),
-        ]
+        cols = [("Ligand", COL_LABEL), ("Bound", COL_WIDE), ("Free", COL_WIDE)]
+        if vacuum:
+            cols.append(("Vacuum", COL_WIDE))
     else:
         print_header("EQUILIBRATION & PRODUCTION STATUS", colors)
         cols = [
@@ -452,6 +467,8 @@ def print_production_status(
             ("Bound", COL_WIDE),
             ("Free", COL_WIDE),
         ]
+        if vacuum:
+            cols.append(("Vacuum", COL_WIDE))
     print_table_header(cols, colors)
 
     for i, ligand in enumerate(ligands):
@@ -461,15 +478,14 @@ def print_production_status(
         for replica in range(num_replicas):
             label = row_label(ligand, replica, num_replicas)
 
-            # Production status (engine-namespaced)
-            bound_dir = (
-                working_dir / "production" / engine / ligand / f"bound_{replica}"
-            )
+            prod_root = working_dir / "production" / engine / ligand
+
+            bound_dir = prod_root / f"bound_{replica}"
             bound_complete = _check_production_complete(bound_dir, engine)
             bound_perf = _get_performance(bound_dir, engine) if bound_complete else None
             bound_str = _format_status_with_speed(bound_complete, bound_perf, colors)
 
-            free_dir = working_dir / "production" / engine / ligand / f"free_{replica}"
+            free_dir = prod_root / f"free_{replica}"
             free_complete = _check_production_complete(free_dir, engine)
             free_perf = _get_performance(free_dir, engine) if free_complete else None
             free_str = _format_status_with_speed(free_complete, free_perf, colors)
@@ -477,32 +493,27 @@ def print_production_status(
             cells = [pad(label, COL_LABEL)]
 
             if not is_somd2:
-                # Equilibration status (GROMACS only)
                 eq_bound_done = (
-                    working_dir
-                    / "equilibration"
-                    / ligand
-                    / f"bound_{replica}"
-                    / ".done"
-                )
-                eq_bound = (
-                    status_ok(colors)
-                    if eq_bound_done.exists()
-                    else status_missing(colors)
+                    working_dir / "equilibration" / ligand / f"bound_{replica}" / ".done"
                 )
                 eq_free_done = (
                     working_dir / "equilibration" / ligand / f"free_{replica}" / ".done"
                 )
-                eq_free = (
-                    status_ok(colors)
-                    if eq_free_done.exists()
-                    else status_missing(colors)
-                )
-                cells.append(pad(eq_bound, COL_STATUS))
-                cells.append(pad(eq_free, COL_STATUS))
+                cells.append(pad(status_ok(colors) if eq_bound_done.exists() else status_missing(colors), COL_STATUS))
+                cells.append(pad(status_ok(colors) if eq_free_done.exists() else status_missing(colors), COL_STATUS))
 
             cells.append(pad(bound_str, COL_WIDE))
-            cells.append(free_str)
+
+            if vacuum:
+                vac_dir = prod_root / f"vacuum_{replica}"
+                vac_complete = _check_production_complete(vac_dir, engine)
+                vac_perf = _get_performance(vac_dir, engine) if vac_complete else None
+                vac_str = _format_status_with_speed(vac_complete, vac_perf, colors)
+                cells.append(pad(free_str, COL_WIDE))
+                cells.append(vac_str)
+            else:
+                cells.append(free_str)
+
             print("".join(cells))
 
 
@@ -511,6 +522,7 @@ def print_analysis_status(
     ligands: list[str],
     num_replicas: int,
     engine: str,
+    vacuum: bool,
     colors: Colors,
 ) -> None:
     print_header("ANALYSIS STATUS", colors)
@@ -525,6 +537,8 @@ def print_analysis_status(
         ("Correction", COL_STATUS),
         ("DG_bind", COL_STATUS),
     ]
+    if vacuum:
+        cols.append(("AHFE", COL_STATUS))
     print_table_header(cols, colors)
 
     for i, ligand in enumerate(ligands):
@@ -536,6 +550,7 @@ def print_analysis_status(
             status_missing(colors) if correction is None else f"{correction:+.2f}"
         )
         replica_dgs = []
+        replica_ahfes = []
 
         for replica in range(num_replicas):
             label = row_label(ligand, replica, num_replicas)
@@ -553,13 +568,25 @@ def print_analysis_status(
             else:
                 dg_bind_str = status_missing(colors)
 
-            print(
+            row = (
                 f"{pad(label, COL_LABEL)}"
                 f"{pad(_format_dg(bound_dg, colors), COL_STATUS)}"
                 f"{pad(_format_dg(free_dg, colors), COL_STATUS)}"
                 f"{pad(correction_str, COL_STATUS)}"
-                f"{dg_bind_str}"
             )
+
+            if vacuum:
+                vac_pmf = analysis_dir / ligand / f"vacuum_{replica}" / "pmf.csv"
+                vac_dg = get_leg_dg(vac_pmf)
+                if vac_dg is not None and free_dg is not None:
+                    ahfe = vac_dg - free_dg
+                    replica_ahfes.append(ahfe)
+                    ahfe_str = f"{colors.CYAN}{ahfe:+.2f}{colors.RESET}"
+                else:
+                    ahfe_str = status_missing(colors)
+                print(f"{row}{pad(dg_bind_str, COL_STATUS)}{ahfe_str}")
+            else:
+                print(f"{row}{dg_bind_str}")
 
         # Average row for multi-replica
         if len(replica_dgs) > 1:
@@ -567,11 +594,19 @@ def print_analysis_status(
             std_dg = np.std(replica_dgs)
             print(f"{colors.DIM}{'-' * TERM_WIDTH}{colors.RESET}")
             avg_str = f"{colors.CYAN}{colors.BOLD}{mean_dg:+.2f} +/- {std_dg:.2f}{colors.RESET}"
+            suffix = ""
+            if vacuum and len(replica_ahfes) > 1:
+                mean_ahfe = np.mean(replica_ahfes)
+                std_ahfe = np.std(replica_ahfes)
+                suffix = (
+                    f"  {colors.DIM}AHFE:{colors.RESET} "
+                    f"{colors.CYAN}{mean_ahfe:+.2f} +/- {std_ahfe:.2f}{colors.RESET}"
+                )
             print(
                 f"{pad('', COL_LABEL)}"
                 f"{pad('', COL_STATUS)}"
                 f"{pad('', COL_STATUS)}"
-                f"{avg_str}"
+                f"{avg_str}{suffix}"
             )
 
 
@@ -580,6 +615,7 @@ def print_results_summary(
     ligands: list[str],
     num_replicas: int,
     engine: str,
+    vacuum: bool,
     colors: Colors,
 ) -> None:
     print_header("RESULTS SUMMARY", colors)
@@ -590,17 +626,32 @@ def print_results_summary(
     # Check if final results file exists
     final_results = analysis_dir / "final_abfe_results.csv"
     if final_results.exists():
-        cols = [
-            ("Ligand", COL_LABEL),
-            ("DG_bind (kcal/mol)", 20),
-            ("Error", COL_STATUS),
-        ]
-        print_table_header(cols, colors)
         df = pd.read_csv(final_results)
+        has_ahfe = vacuum and "AHFE" in df.columns
+        if has_ahfe:
+            cols = [
+                ("Ligand", COL_LABEL),
+                ("DG_bind (kcal/mol)", 20),
+                ("Error", COL_STATUS),
+                ("AHFE (kcal/mol)", 20),
+                ("AHFE Error", COL_STATUS),
+            ]
+        else:
+            cols = [
+                ("Ligand", COL_LABEL),
+                ("DG_bind (kcal/mol)", 20),
+                ("Error", COL_STATUS),
+            ]
+        print_table_header(cols, colors)
         for _, row in df.iterrows():
             dg_str = f"{colors.GREEN}{row['DG_bind']:+.3f}{colors.RESET}"
             err_str = f"{colors.YELLOW}+/-{row['error']:.3f}{colors.RESET}"
-            print(f"{pad(row['ligand'], COL_LABEL)}{pad(dg_str, 20)}{err_str}")
+            line = f"{pad(row['ligand'], COL_LABEL)}{pad(dg_str, 20)}{pad(err_str, COL_STATUS)}"
+            if has_ahfe:
+                ahfe_str = f"{colors.CYAN}{row['AHFE']:+.3f}{colors.RESET}"
+                ahfe_err_str = f"{colors.YELLOW}+/-{row['AHFE_error']:.3f}{colors.RESET}"
+                line += f"{pad(ahfe_str, 20)}{ahfe_err_str}"
+            print(line)
         return
 
     # Otherwise calculate from available PMFs
@@ -677,13 +728,14 @@ def main():
     print(f"  {colors.BOLD}Ligands:{colors.RESET}           {', '.join(ligands)}")
     print(f"  {colors.BOLD}Replicas:{colors.RESET}          {args.num_replicas}")
 
+    vacuum = args.vacuum
     if args.results_only:
-        print_results_summary(working_dir, ligands, args.num_replicas, engine, colors)
+        print_results_summary(working_dir, ligands, args.num_replicas, engine, vacuum, colors)
     else:
         print_preparation_status(working_dir, ligands, engine, colors)
-        print_production_status(working_dir, ligands, args.num_replicas, engine, colors)
-        print_analysis_status(working_dir, ligands, args.num_replicas, engine, colors)
-        print_results_summary(working_dir, ligands, args.num_replicas, engine, colors)
+        print_production_status(working_dir, ligands, args.num_replicas, engine, vacuum, colors)
+        print_analysis_status(working_dir, ligands, args.num_replicas, engine, vacuum, colors)
+        print_results_summary(working_dir, ligands, args.num_replicas, engine, vacuum, colors)
 
     print()
 
