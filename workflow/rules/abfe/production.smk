@@ -95,9 +95,9 @@ rule equilibrate_bound:
         / "{ligand}_bound.bss",
         restraint=Path(f"{config['working_directory']}/restraints")
         / "{ligand}_restraint.json",
-        prev_replica=lambda wc: [] if int(wc.replica) == 0 else [
+        prev_replica=lambda wc: [] if int(wc.replica) == 0 else ancient([
             f"{config['working_directory']}/production/{_engine}/.replica_{int(wc.replica) - 1}_barrier",
-        ],
+        ]),
     output:
         done=Path(
             f"{config['working_directory']}/equilibration/{{ligand}}/bound_{{replica}}/.done"
@@ -221,9 +221,9 @@ rule equilibrate_free:
     input:
         system=Path(f"{config['working_directory']}/abfe_prepared")
         / "{ligand}_free.bss",
-        prev_replica=lambda wc: [] if int(wc.replica) == 0 else [
+        prev_replica=lambda wc: [] if int(wc.replica) == 0 else ancient([
             f"{config['working_directory']}/production/{_engine}/.replica_{int(wc.replica) - 1}_barrier",
-        ],
+        ]),
     output:
         done=Path(
             f"{config['working_directory']}/equilibration/{{ligand}}/free_{{replica}}/.done"
