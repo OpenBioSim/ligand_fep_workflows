@@ -143,6 +143,9 @@ rule somd2_production_bound:
         use_dispersion_correction=lambda wc: config["production-settings"].get("somd2-settings", {}).get(
             "use_dispersion_correction", False
         ),
+        oversubscription_factor=lambda wc: config["production-settings"].get("somd2-settings", {}).get(
+            "oversubscription_factor", 7
+        ),
         restart=config["production-settings"].get("restart", False),
         output_directory=lambda wc: Path(
             f"{config['working_directory']}/production/{_engine}/{wc.ligand}/bound_{wc.replica}"
@@ -170,6 +173,7 @@ rule somd2_production_bound:
             --equilibration-time {params.equilibration_time} \
             --runner {params.runner} \
             --perturbation-type {params.perturbation_type} \
+            --oversubscription-factor {params.oversubscription_factor} \
             $([ "{params.num_energy_neighbours}" != "None" ] && echo "--num-energy-neighbours {params.num_energy_neighbours}") \
             $([ "{params.use_dispersion_correction}" = "True" ] && echo "--use-dispersion-correction") \
             $([ "{params.restart}" = "True" ] && echo "--restart") \
@@ -260,6 +264,9 @@ rule somd2_production_free:
         use_dispersion_correction=lambda wc: config["production-settings"].get("somd2-settings", {}).get(
             "use_dispersion_correction", False
         ),
+        oversubscription_factor=lambda wc: config["production-settings"].get("somd2-settings", {}).get(
+            "oversubscription_factor", 7
+        ),
         restart=config["production-settings"].get("restart", False),
         output_directory=lambda wc: Path(
             f"{config['working_directory']}/production/{_engine}/{wc.ligand}/free_{wc.replica}"
@@ -286,6 +293,7 @@ rule somd2_production_free:
             --equilibration-time {params.equilibration_time} \
             --runner {params.runner} \
             --perturbation-type {params.perturbation_type} \
+            --oversubscription-factor {params.oversubscription_factor} \
             $([ "{params.use_dispersion_correction}" = "True" ] && echo "--use-dispersion-correction") \
             $([ "{params.restart}" = "True" ] && echo "--restart") \
             2>&1 | tee {log}
@@ -380,6 +388,9 @@ if _run_vacuum_leg:
             use_dispersion_correction=lambda wc: config["production-settings"].get("somd2-settings", {}).get(
                 "use_dispersion_correction", False
             ),
+            oversubscription_factor=lambda wc: config["production-settings"].get("somd2-settings", {}).get(
+                "oversubscription_factor", 7
+            ),
             restart=config["production-settings"].get("restart", False),
             output_directory=lambda wc: Path(
                 f"{config['working_directory']}/production/{_engine}/{wc.ligand}/vacuum_{wc.replica}"
@@ -406,6 +417,7 @@ if _run_vacuum_leg:
                 --equilibration-time {params.equilibration_time} \
                 --runner {params.runner} \
                 --perturbation-type {params.perturbation_type} \
+                --oversubscription-factor {params.oversubscription_factor} \
                 $([ "{params.use_dispersion_correction}" = "True" ] && echo "--use-dispersion-correction") \
                 $([ "{params.restart}" = "True" ] && echo "--restart") \
                 2>&1 | tee {log}

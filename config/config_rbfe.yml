@@ -262,6 +262,11 @@ production-settings:
     runner: repex
     gpus_per_job: 1           # Number of GPUs per job (repex distributes windows across GPUs)
     use_dispersion_correction: false  # GROMACS applies this by default (DispCorr = EnerPres); SOMD2 does not
+    # GPU oversubscription for NVIDIA MPS. Set to num_lambda / gpus_per_job when
+    # nvidia-cuda-mps-control is active (e.g. 21 windows / 3 GPUs = 7). MPS
+    # schedules concurrent workers up to the hardware limit without penalty.
+    # Leave at 1 (the default) if MPS is not enabled.
+    oversubscription_factor: 1
 
 # Analysis settings
 # -----------------

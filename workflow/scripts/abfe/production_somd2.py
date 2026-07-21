@@ -168,6 +168,16 @@ def parse_args() -> argparse.Namespace:
         help="Enable the long-range LJ dispersion correction (SOMD2 default: disabled).",
     )
     parser.add_argument(
+        "--oversubscription-factor",
+        type=int,
+        default=1,
+        help="Number of concurrent SOMD2 workers per GPU. Values > 1 oversubscribe each "
+        "GPU and require NVIDIA MPS to be active (nvidia-cuda-mps-control -d). "
+        "A good starting point is num_lambda / gpus_per_job (e.g. 21 windows across "
+        "3 GPUs → 7). MPS caps utilisation at the hardware limit so higher values do "
+        "not hurt performance once the GPU is saturated.",
+    )
+    parser.add_argument(
         "--restart",
         action="store_true",
         default=False,
@@ -394,6 +404,7 @@ def main():
         overwrite=True,
         restart=args.restart,
         use_dispersion_correction=args.use_dispersion_correction,
+        oversubscription_factor=args.oversubscription_factor,
     )
 
     # Step 6: Run SOMD2
