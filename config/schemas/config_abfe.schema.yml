@@ -314,6 +314,12 @@
               "minimum": 1,
               "description": "Hydrogen mass repartitioning factor."
             },
+            "integrator": {
+              "type": "string",
+              "enum": ["sd", "md"],
+              "default": "sd",
+              "description": "GROMACS integrator: 'sd' (Langevin stochastic dynamics, default) or 'md' (leapfrog with explicit v-rescale thermostat). Only 'md' supports -update gpu offload."
+            },
             "runner": {
               "type": "string",
               "enum": ["repex", "standard"],
@@ -597,6 +603,12 @@
               "type": "boolean",
               "default": false,
               "description": "Enable the long-range LJ dispersion correction (SOMD2 default: disabled). GROMACS applies this by default; SOMD2 does not."
+            },
+            "oversubscription_factor": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1,
+              "description": "Number of concurrent SOMD2 workers per GPU. Values > 1 oversubscribe each GPU and require NVIDIA MPS to be active (nvidia-cuda-mps-control -d). A good starting point is num_lambda / gpus_per_job (e.g. 21 windows across 3 GPUs gives 7). MPS caps utilisation at the hardware limit so higher values do not hurt performance once the GPU is saturated."
             },
             "restraint_style": {
               "type": "string",

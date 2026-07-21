@@ -44,6 +44,8 @@ def create_python_script_call(wc, input, leg):
             args.append(f"--num-energy-neighbours {cfg['num_energy_neighbours']}")
         if cfg.get("use_dispersion_correction", False):
             args.append("--use-dispersion-correction")
+        if cfg.get("oversubscription_factor", 1) > 1:
+            args.append(f"--oversubscription-factor {cfg['oversubscription_factor']}")
         if cfg.get("frame_frequency"):
             args.append(f"--frame-frequency {cfg['frame_frequency']}")
         if cfg.get("checkpoint_frequency"):

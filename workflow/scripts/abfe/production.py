@@ -131,6 +131,13 @@ def parse_args() -> argparse.Namespace:
         default=True,
         help="Pass --oversubscribe to mpirun (default: True).",
     )
+    parser.add_argument(
+        "--integrator",
+        type=str,
+        choices=["sd", "md"],
+        default="sd",
+        help="GROMACS integrator: 'sd' (Langevin, default) or 'md' (leapfrog + v-rescale thermostat).",
+    )
     return parser.parse_args()
 
 
@@ -230,6 +237,7 @@ def setup_gromacs_abfe(
     runner: str = "standard",
     repex_frequency: int = 1000,
     oversubscribe: bool = True,
+    integrator: str = "sd",
 ) -> None:
     """
     Set up GROMACS ABFE simulations using BioSimSpace unified protocol.
@@ -262,6 +270,19 @@ def setup_gromacs_abfe(
 
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
+
+    def _patch_mdp_integrator(work_dir: Path) -> None:
+        """Patch BSS-generated MDP files to use md integrator with v-rescale thermostat.
+        Only patches files that use the sd integrator; minimisation MDPs (steep/l-bfgs) are left unchanged."""
+        import re
+        for mdp in work_dir.rglob("gromacs.mdp"):
+            text = mdp.read_text()
+            patched = re.sub(r"(?m)^integrator\s*=\s*sd\b.*", "integrator = md", text)
+            if patched == text:
+                continue
+            if not re.search(r"(?m)^tcoupl\s*=", patched):
+                patched += "\ntcoupl = v-rescale\n"
+            mdp.write_text(patched)
 
     # Create initial lambda state (first row of DataFrame)
     lam = pd.Series({col: lam_vals_df[col].iloc[0] for col in lam_vals_df.columns})
@@ -308,6 +329,8 @@ def setup_gromacs_abfe(
         restraint=restraint,
         setup_only=True,
     )
+    if integrator == "md":
+        _patch_mdp_integrator(output_dir / "heat")
 
     # Setup NPT equilibration
     print("Setting up NPT equilibration...")
@@ -331,6 +354,8 @@ def setup_gromacs_abfe(
         setup_only=True,
         ignore_warnings=True,
     )
+    if integrator == "md":
+        _patch_mdp_integrator(output_dir / "eq")
 
     # Setup production
     print("Setting up production...")
@@ -360,6 +385,8 @@ def setup_gromacs_abfe(
         setup_only=True,
         ignore_warnings=True,
     )
+    if integrator == "md":
+        _patch_mdp_integrator(output_dir)
 
     print("Setup complete.")
 
@@ -425,6 +452,7 @@ def main():
         runner=args.runner,
         repex_frequency=args.repex_frequency,
         oversubscribe=args.oversubscribe,
+        integrator=args.integrator,
     )
 
     print(f"\nABFE setup complete: {args.ligand_name} {args.leg}")

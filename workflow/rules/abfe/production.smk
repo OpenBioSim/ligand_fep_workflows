@@ -24,6 +24,7 @@ _repex_frequency = config["production-settings"].get("gromacs-settings", {}).get
 _nex = config["production-settings"].get("gromacs-settings", {}).get("nex", 1000000)
 _oversubscribe = config["production-settings"].get("gromacs-settings", {}).get("oversubscribe", True)
 _gromacs_gpus_per_job = config["production-settings"].get("gromacs-settings", {}).get("gpus_per_job", 1)
+_integrator = config["production-settings"].get("gromacs-settings", {}).get("integrator", "sd").strip().lower()
 _run_vacuum_leg = config.get("run_vacuum_leg", False)
 
 
@@ -160,6 +161,7 @@ rule equilibrate_bound:
             f"--restart-interval {params.restart_interval} "
             f"--runner {_gromacs_runner} "
             f"--repex-frequency {_repex_frequency} "
+            f"--integrator {_integrator} "
             + ("--oversubscribe " if _oversubscribe else "")
             + f"2>&1 | tee {log}"
         )
@@ -285,6 +287,7 @@ rule equilibrate_free:
             f"--restart-interval {params.restart_interval} "
             f"--runner {_gromacs_runner} "
             f"--repex-frequency {_repex_frequency} "
+            f"--integrator {_integrator} "
             + ("--oversubscribe " if _oversubscribe else "")
             + f"2>&1 | tee {log}"
         )
@@ -404,7 +407,7 @@ rule production_bound:
                 f"cd {prod_dir} && mpirun {'--oversubscribe ' if _oversubscribe else ''}"
                 f"-mca opal_cuda_support 1 -x OMP_NUM_THREADS=1 "
                 f"-np {n_replicas} gmx_mpi mdrun -deffnm gromacs "
-                f"-bonded gpu -cpt -1 "
+                f"{'-nb gpu -pme gpu ' if _integrator == 'md' else ''}-bonded gpu {'-update gpu ' if _integrator == 'md' else ''}-cpt -1 "
                 f"-c gromacs_out.gro -multidir {lam_dirs} -replex {_repex_frequency} -nex {_nex} "
                 f"> mdrun.log 2>&1"
             )
@@ -516,7 +519,7 @@ rule production_free:
                 f"cd {prod_dir} && mpirun {'--oversubscribe ' if _oversubscribe else ''}"
                 f"-mca opal_cuda_support 1 -x OMP_NUM_THREADS=1 "
                 f"-np {n_replicas} gmx_mpi mdrun -deffnm gromacs "
-                f"-bonded gpu -cpt -1 "
+                f"{'-nb gpu -pme gpu ' if _integrator == 'md' else ''}-bonded gpu {'-update gpu ' if _integrator == 'md' else ''}-cpt -1 "
                 f"-c gromacs_out.gro -multidir {lam_dirs} -replex {_repex_frequency} -nex {_nex} "
                 f"> mdrun.log 2>&1"
             )
@@ -698,7 +701,7 @@ if _run_vacuum_leg:
                     f"cd {prod_dir} && mpirun {'--oversubscribe ' if _oversubscribe else ''}"
                     f"-mca opal_cuda_support 1 -x OMP_NUM_THREADS=1 "
                     f"-np {n_replicas} gmx_mpi mdrun -deffnm gromacs "
-                    f"-bonded gpu -cpt -1 "
+                    f"-bonded gpu {'-update gpu ' if _integrator == 'md' else ''}-cpt -1 "
                     f"-c gromacs_out.gro -multidir {lam_dirs} -replex {_repex_frequency} -nex {_nex} "
                     f"> mdrun.log 2>&1"
                 )

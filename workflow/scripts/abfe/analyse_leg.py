@@ -18,6 +18,7 @@ Author: ABFE Workflow
 """
 
 import argparse
+import glob
 from pathlib import Path
 
 import matplotlib.colors as colors
@@ -59,7 +60,7 @@ def parse_args() -> argparse.Namespace:
         type=str,
         choices=["gromacs", "somd2"],
         default="somd2",
-        help="Simulation engine used (determines BSS import).",
+        help="Simulation engine used (determines analysis backend).",
     )
     parser.add_argument(
         "--estimator",
@@ -186,16 +187,78 @@ def plot_overlap_matrix(
     plt.close()
 
 
+def analyse_gromacs(
+    input_dir: Path, temperature_k: float, estimator: str
+) -> tuple[pd.DataFrame, np.ndarray]:
+    """
+    Analyse a GROMACS ABFE leg using alchemlyb directly.
+
+    Uses alchemlyb to parse GROMACS xvg files and run MBAR/TI without
+    invoking any GROMACS binary (avoids gmx -version MPI deadlock).
+
+    Returns:
+        df: DataFrame with lambda, free_energy (kcal/mol), error (kcal/mol)
+        overlap: Overlap matrix (MBAR only; empty array for TI)
+    """
+    from alchemlyb.parsing.gmx import extract_u_nk
+    from alchemlyb.estimators import MBAR, TI
+
+    xvg_files = sorted(glob.glob(str(input_dir / "lambda_*" / "gromacs.xvg")))
+    if not xvg_files:
+        raise ValueError(f"No gromacs.xvg files found under {input_dir}")
+    print(f"Found {len(xvg_files)} lambda windows")
+
+    u_nk_list = []
+    for xvg in xvg_files:
+        try:
+            u_nk_list.append(extract_u_nk(xvg, T=temperature_k))
+        except Exception as e:
+            print(f"Warning: skipping {xvg}: {e}")
+
+    if not u_nk_list:
+        raise ValueError("Could not parse any xvg files")
+
+    u_nk = pd.concat(u_nk_list).sort_index(level="time")
+
+    # kBT → kcal/mol: R (kJ/mol/K) * T / 4.184 (kJ/kcal)
+    kBT_kcalmol = 8.314462e-3 * temperature_k / 4.184
+
+    if estimator == "MBAR":
+        est = MBAR().fit(u_nk)
+        dG_kT = est.delta_f_.iloc[0].values
+        err_kT = est.d_delta_f_.iloc[0].values
+        overlap = np.array(est.overlap_matrix)
+    else:
+        est = TI().fit(u_nk)
+        dG_kT = np.cumsum(
+            [0.0] + list(est.delta_f_["TI"].values)
+        )
+        err_kT = np.sqrt(
+            np.cumsum([0.0] + [e**2 for e in est.d_delta_f_["TI"].values])
+        )
+        overlap = np.array([])
+
+    # Use integer window indices as lambda labels (handles multi-column schedules
+    # where the index would otherwise be a tuple of lambda component values)
+    lambda_labels = list(range(len(dG_kT)))
+
+    df = pd.DataFrame(
+        {
+            "lambda": lambda_labels,
+            "free_energy (kcal/mol)": dG_kT * kBT_kcalmol,
+            "error (kcal/mol)": err_kT * kBT_kcalmol,
+        }
+    )
+    return df, overlap
+
+
 def main():
     """Main entry point for leg analysis."""
     args = parse_args()
 
-    if args.engine == "gromacs":
-        import BioSimSpace.Sandpit.Exscientia as BSS
-        analyser = BSS.FreeEnergy.AlchemicalFreeEnergy
-    else:
-        import BioSimSpace as BSS
-        analyser = BSS.FreeEnergy.Relative
+    # Parse temperature string to float (e.g. "300K" -> 300.0)
+    temp_str = args.temperature.strip().upper().rstrip("K").strip()
+    temperature_k = float(temp_str)
 
     input_dir = Path(args.input_directory)
     output_dir = Path(args.output_directory)
@@ -203,38 +266,34 @@ def main():
 
     print(f"Analysing leg: {input_dir}")
 
-    # Parse temperature
-    temperature = BSS.Types.Temperature(args.temperature)
-
     try:
-        pmf, overlap = analyser.analyse(
-            str(input_dir),
-            temperature=temperature,
-            estimator=args.estimator,
-        )
+        if args.engine == "gromacs":
+            df, overlap = analyse_gromacs(input_dir, temperature_k, args.estimator)
+        else:
+            import BioSimSpace as BSS
+            analyser = BSS.FreeEnergy.Relative
+            temperature = BSS.Types.Temperature(args.temperature)
+            pmf, overlap_raw = analyser.analyse(
+                str(input_dir),
+                temperature=temperature,
+                estimator=args.estimator,
+            )
+            df = pd.DataFrame(
+                {
+                    "lambda": [x[0] for x in pmf],
+                    "free_energy (kcal/mol)": [x[1].value() for x in pmf],
+                    "error (kcal/mol)": [x[2].value() for x in pmf],
+                }
+            )
+            overlap = np.array(overlap_raw)
 
-        # Convert PMF to DataFrame
-        lambda_values = [x[0] for x in pmf]
-        free_energies = [x[1].value() for x in pmf]
-        errors = [x[2].value() for x in pmf]
-
-        df = pd.DataFrame(
-            {
-                "lambda": lambda_values,
-                "free_energy (kcal/mol)": free_energies,
-                "error (kcal/mol)": errors,
-            }
-        )
-
-        # Get final DG value
-        final_dg = free_energies[-1]
-        final_error = errors[-1]
+        final_dg = df["free_energy (kcal/mol)"].iloc[-1]
+        final_error = df["error (kcal/mol)"].iloc[-1]
         print(f"Leg DG: {final_dg:.4f} +/- {final_error:.4f} kcal/mol")
 
     except Exception as e:
         print(f"Warning: Analysis failed: {e}")
         print("Writing empty results...")
-
         df = pd.DataFrame(
             {
                 "lambda": [],
@@ -255,14 +314,14 @@ def main():
     if args.plot_overlap_matrix and len(overlap) > 0:
         try:
             plot_overlap_matrix(overlap, output_dir)
-            print(f"Saved overlap matrix plot")
+            print("Saved overlap matrix plot")
         except Exception as e:
             print(f"Warning: Could not plot overlap matrix: {e}")
 
     if args.plot_pmf and len(df) > 0:
         try:
             plot_pmf(df, output_dir)
-            print(f"Saved PMF plot")
+            print("Saved PMF plot")
         except Exception as e:
             print(f"Warning: Could not plot PMF: {e}")
 
