@@ -329,8 +329,8 @@
             "repex-frequency": {
               "type": "integer",
               "minimum": 1,
-              "default": 1000,
-              "description": "Exchange attempt frequency in MD steps for GROMACS repex (default: 1000)."
+              "default": 250,
+              "description": "Exchange attempt frequency in MD steps for GROMACS repex (default: 250)."
             },
             "nex": {
               "type": "integer",
