@@ -242,7 +242,7 @@ production-settings:
     # standard runs each lambda window independently.
     runner: repex
     # Number of MD steps between replica exchange attempts (repex only).
-    repex-frequency: 1000
+    repex-frequency: 250
     # Number of random exchanges to attempt per interval (-nex). 0 = neighbor-only
     # exchange; a large value (default) gives thorough random-pair mixing instead.
     nex: 1000000
