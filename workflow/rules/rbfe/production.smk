@@ -224,8 +224,11 @@ def _run_gromacs_stages(output_directory, repex=False, repex_frequency=1000):
             # this shell command directly -- but the plugin unconditionally strips
             # SLURM_* env vars first, including ones mpirun's own PRRTE runtime needs
             # to detect the allocation (SLURM_NODELIST, SLURM_TASKS_PER_NODE). Re-export
-            # them here -- values are trivial and static for this single-node cluster.
-            f"export SLURM_NODELIST=$(hostname) SLURM_TASKS_PER_NODE={n_replicas} SLURM_JOB_NUM_NODES=1 SLURM_NNODES=1 && "
+            # only the ones actually missing, so a future plugin/cluster that stops
+            # stripping them (or that provides real multi-node values) is left untouched.
+            f"export SLURM_NODELIST=${{{{SLURM_NODELIST:-$(hostname)}}}} "
+            f"SLURM_TASKS_PER_NODE=${{{{SLURM_TASKS_PER_NODE:-{n_replicas}}}}} "
+            f"SLURM_JOB_NUM_NODES=${{{{SLURM_JOB_NUM_NODES:-1}}}} SLURM_NNODES=${{{{SLURM_NNODES:-1}}}} && "
             f"mpirun {'--oversubscribe ' if _oversubscribe else ''}"
             f"-mca opal_cuda_support 1 -x OMP_NUM_THREADS=1 "
             f"{'-x CUDA_MPS_ACTIVE_THREAD_PERCENTAGE=' + str(_gromacs_mps_pct) + ' ' if _gromacs_mps_pct else ''}"

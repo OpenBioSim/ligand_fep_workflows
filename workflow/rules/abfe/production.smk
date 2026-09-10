@@ -416,11 +416,14 @@ rule production_bound:
             lam_dirs = " ".join(str(prod_dir / f"lambda_{lv}") for lv in lambda_values)
             shell(
                 f"cd {prod_dir} && "
-                # mpi=srun above (see resources:) skips the slurm-jobstep executor\'s
+                # mpi=srun above (see resources:) skips the slurm-jobstep executor's
                 # nested srun wrapper, but it also strips SLURM_* env vars that mpirun
-                # needs to detect the allocation. Re-export them -- values are static
-                # for this single-node cluster.
-                f"export SLURM_NODELIST=$(hostname) SLURM_TASKS_PER_NODE={n_replicas} SLURM_JOB_NUM_NODES=1 SLURM_NNODES=1 && "
+                # needs to detect the allocation. Re-export only the ones actually
+                # missing, so a future plugin/cluster that stops stripping them (or
+                # that provides real multi-node values) is left untouched.
+                f"export SLURM_NODELIST=${{{{SLURM_NODELIST:-$(hostname)}}}} "
+                f"SLURM_TASKS_PER_NODE=${{{{SLURM_TASKS_PER_NODE:-{n_replicas}}}}} "
+                f"SLURM_JOB_NUM_NODES=${{{{SLURM_JOB_NUM_NODES:-1}}}} SLURM_NNODES=${{{{SLURM_NNODES:-1}}}} && "
                 f"mpirun {'--oversubscribe ' if _oversubscribe else ''}"
                 f"-mca opal_cuda_support 1 -x OMP_NUM_THREADS=1 "
                 f"{'-x CUDA_MPS_ACTIVE_THREAD_PERCENTAGE=' + str(_gromacs_mps_pct) + ' ' if _gromacs_mps_pct else ''}"
@@ -539,11 +542,14 @@ rule production_free:
             lam_dirs = " ".join(str(prod_dir / f"lambda_{lv}") for lv in lambda_values)
             shell(
                 f"cd {prod_dir} && "
-                # mpi=srun above (see resources:) skips the slurm-jobstep executor\'s
+                # mpi=srun above (see resources:) skips the slurm-jobstep executor's
                 # nested srun wrapper, but it also strips SLURM_* env vars that mpirun
-                # needs to detect the allocation. Re-export them -- values are static
-                # for this single-node cluster.
-                f"export SLURM_NODELIST=$(hostname) SLURM_TASKS_PER_NODE={n_replicas} SLURM_JOB_NUM_NODES=1 SLURM_NNODES=1 && "
+                # needs to detect the allocation. Re-export only the ones actually
+                # missing, so a future plugin/cluster that stops stripping them (or
+                # that provides real multi-node values) is left untouched.
+                f"export SLURM_NODELIST=${{{{SLURM_NODELIST:-$(hostname)}}}} "
+                f"SLURM_TASKS_PER_NODE=${{{{SLURM_TASKS_PER_NODE:-{n_replicas}}}}} "
+                f"SLURM_JOB_NUM_NODES=${{{{SLURM_JOB_NUM_NODES:-1}}}} SLURM_NNODES=${{{{SLURM_NNODES:-1}}}} && "
                 f"mpirun {'--oversubscribe ' if _oversubscribe else ''}"
                 f"-mca opal_cuda_support 1 -x OMP_NUM_THREADS=1 "
                 f"{'-x CUDA_MPS_ACTIVE_THREAD_PERCENTAGE=' + str(_gromacs_mps_pct) + ' ' if _gromacs_mps_pct else ''}"
@@ -732,12 +738,15 @@ if _run_vacuum_leg:
                 lam_dirs = " ".join(str(prod_dir / f"lambda_{lv}") for lv in lambda_values)
                 shell(
                     f"cd {prod_dir} && "
-                # mpi=srun above (see resources:) skips the slurm-jobstep executor\'s
-                # nested srun wrapper, but it also strips SLURM_* env vars that mpirun
-                # needs to detect the allocation. Re-export them -- values are static
-                # for this single-node cluster.
-                f"export SLURM_NODELIST=$(hostname) SLURM_TASKS_PER_NODE={n_replicas} SLURM_JOB_NUM_NODES=1 SLURM_NNODES=1 && "
-                f"mpirun {'--oversubscribe ' if _oversubscribe else ''}"
+                    # mpi=srun above (see resources:) skips the slurm-jobstep executor's
+                    # nested srun wrapper, but it also strips SLURM_* env vars that mpirun
+                    # needs to detect the allocation. Re-export only the ones actually
+                    # missing, so a future plugin/cluster that stops stripping them (or
+                    # that provides real multi-node values) is left untouched.
+                    f"export SLURM_NODELIST=${{{{SLURM_NODELIST:-$(hostname)}}}} "
+                    f"SLURM_TASKS_PER_NODE=${{{{SLURM_TASKS_PER_NODE:-{n_replicas}}}}} "
+                    f"SLURM_JOB_NUM_NODES=${{{{SLURM_JOB_NUM_NODES:-1}}}} SLURM_NNODES=${{{{SLURM_NNODES:-1}}}} && "
+                    f"mpirun {'--oversubscribe ' if _oversubscribe else ''}"
                     f"-mca opal_cuda_support 1 -x OMP_NUM_THREADS=1 "
                     f"{'-x CUDA_MPS_ACTIVE_THREAD_PERCENTAGE=' + str(_gromacs_mps_pct) + ' ' if _gromacs_mps_pct else ''}"
                     f"-np {n_replicas} gmx_mpi mdrun -deffnm gromacs "
