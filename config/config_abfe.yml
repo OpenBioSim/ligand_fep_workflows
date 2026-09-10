@@ -298,8 +298,11 @@ production-settings:
     # GPU oversubscription for NVIDIA MPS. Set to num_lambda / gpus_per_job when
     # nvidia-cuda-mps-control is active (e.g. 21 windows / 3 GPUs = 7). MPS
     # schedules concurrent workers up to the hardware limit without penalty.
-    # Leave at 1 (the default) if MPS is not enabled.
-    oversubscription_factor: 7
+    # Leave at 1 (the default) if MPS is not enabled. Test MPS on a single GPU
+    # before enabling it across multiple GPUs in the same job -- some GPU/driver
+    # combinations are unstable under concurrent MPS contexts spread across
+    # several devices at once.
+    oversubscription_factor: 1
     # Boresch restraint source for the bound leg: "legacy" (default, shares the
     # BioSimSpace/Aldeghi-style search used by the GROMACS engine) or "native"
     # (sire's own sire.restraints.boresch_search(), mirroring SOMD2's built-in
