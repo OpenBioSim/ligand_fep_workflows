@@ -332,6 +332,18 @@
               "default": 250,
               "description": "Exchange attempt frequency in MD steps for GROMACS repex (default: 250)."
             },
+            "oversubscription_factor": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1,
+              "description": "GPU oversubscription factor for NVIDIA MPS -- number of concurrent MPI ranks sharing each GPU. Leave at 1 (default, no MPS) unless MPS is confirmed running and its GPU-fault history for this hardware is understood."
+            },
+            "mps_active_thread_percentage": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "description": "CUDA_MPS_ACTIVE_THREAD_PERCENTAGE cap per MPS client (optional). Only meaningful when oversubscription_factor > 1 and MPS is active."
+            },
             "nex": {
               "type": "integer",
               "minimum": 0,

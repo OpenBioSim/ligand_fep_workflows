@@ -71,6 +71,10 @@ Both workflows support multiple engines:
 
 The engine can be overridden on the command line: `--config engine=somd2`
 
+#### GROMACS version requirement
+
+This workflow requires **GROMACS 2026 or later** for production runs. GPU offloading of the free-energy nonbonded kernel (`-nbfe gpu`) was added in GROMACS 2026 -- earlier versions don't have a separate flag for it, and without it FEP nonbonded work falls back to CPU, which is substantially slower and defeats the purpose of the `-nb gpu`/`-pme gpu`/`-update gpu` offloading the workflow otherwise relies on. If `gmx mdrun` rejects `-nbfe`, you're on an older GROMACS build and need to upgrade.
+
 ## RBFE Workflow
 
 Relative binding free energy calculations comparing ligand pairs through a perturbation network.
