@@ -123,7 +123,7 @@ A SLURM profile is provided at `profiles/config.yaml`. It is pre-configured for 
 | `mem_mb` | `5000` | Memory per job (MB) — increase for large systems |
 | `runtime` | `4320m` (72h) | Wall time per job — production runs ~52h for 21 lambda windows |
 | `gpu` | `1` | GPUs per job |
-| `cpus_per_gpu` | `5` | CPUs allocated per GPU — should be >= `simulation_threads` in your config |
+| `cpus_per_gpu` | `5` | CPUs allocated per GPU — should be >= `simulation_threads` in your config. Ignored for GROMACS `runner: repex` jobs, which request CPUs differently (see below) |
 
 ```bash
 snakemake -s workflow/Snakefile --configfile config/config_rbfe.yml \
@@ -131,6 +131,32 @@ snakemake -s workflow/Snakefile --configfile config/config_rbfe.yml \
 ```
 
 The `--resources gpu=N` flag limits the total number of concurrent GPU jobs. Set this to match the number of GPUs available on your machine or allocation.
+
+#### GROMACS repex CPU binding and job shape
+
+For `runner: repex` (GROMACS Hamiltonian replica exchange), the workflow computes its
+own SLURM resource request (`gpu`, `tasks_per_node`, `cpus_per_task`) from your config
+rather than using the profile's `cpus_per_gpu` default. This is necessary because
+SLURM's default GPU-CPU binding partitions the allocated CPUs into rigid per-GPU
+groups sized by `cpus_per_gpu` -- fine for one MPI rank per GPU, but repex launches one
+rank per lambda window (e.g. 21 ranks across 3 GPUs), and rigid per-GPU partitioning
+prevents those ranks from sharing idle cycles across groups. Requesting
+`cpus_per_task=1` with an explicit task count instead gives GROMACS's `mpirun` the full
+CPU pool to schedule across, which is substantially faster in practice on a
+single-socket machine (there's no NUMA locality benefit being given up here).
+
+This resource request scales automatically with your config -- change `gpus_per_job`
+or the number of lambda windows (`lambda_schedules` for ABFE, or the network's
+per-edge window count for RBFE) and the SLURM request adjusts accordingly; no code
+changes needed for a different GPU count or job shape.
+
+One consequence of requesting resources this way: the workflow's `mpirun` call is
+launched directly rather than through the executor plugin's usual `srun` wrapper, and
+re-exports a few `SLURM_*` environment variables that the plugin would otherwise strip
+(only filling in values that are actually missing, so real values are never
+overwritten). This assumes a **single-node allocation** -- correct for a single
+workstation or single-node SLURM allocation, but the repex path does not currently
+support spreading one job across multiple nodes.
 
 ## Monitoring
 
