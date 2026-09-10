@@ -209,6 +209,10 @@ production-settings:
     # Hydrogen mass repartitioning factor (3 recommended for GROMACS with 4fs timestep)
     hmr_factor: 3
 
+    # GROMACS integrator: "sd" (Langevin stochastic dynamics, default) or "md" (leapfrog
+    # with explicit v-rescale thermostat). Only "md" supports -update gpu offload.
+    integrator: md
+
     # Runner type: "repex" (Hamiltonian replica exchange) or "standard" (independent windows).
     # repex runs all lambda windows together via gmx mdrun -multidir -replex using thread-MPI.
     runner: repex

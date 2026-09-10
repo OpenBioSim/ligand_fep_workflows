@@ -24,6 +24,8 @@ _repex_frequency = config["production-settings"].get("gromacs-settings", {}).get
 _nex = config["production-settings"].get("gromacs-settings", {}).get("nex", 1000000)
 _oversubscribe = config["production-settings"].get("gromacs-settings", {}).get("oversubscribe", True)
 _gromacs_gpus_per_job = config["production-settings"].get("gromacs-settings", {}).get("gpus_per_job", 1)
+_gromacs_oversubscription_factor = config["production-settings"].get("gromacs-settings", {}).get("oversubscription_factor", 1)
+_gromacs_mps_pct = config["production-settings"].get("gromacs-settings", {}).get("mps_active_thread_percentage")
 _integrator = config["production-settings"].get("gromacs-settings", {}).get("integrator", "sd").strip().lower()
 _run_vacuum_leg = config.get("run_vacuum_leg", False)
 
@@ -35,6 +37,12 @@ def _calc_nsteps_abfe(leg: str) -> int:
         f"{leg}-leg-settings", {}
     )
     return int(sr.u(settings.get("runtime", "2ns")) / sr.u(settings.get("timestep", "4fs")))
+
+
+def _gromacs_num_lambda(leg: str) -> int:
+    """Number of lambda windows (= MPI ranks for repex) for a given leg's schedule."""
+    schedule = config["production-settings"]["gromacs-settings"]["lambda_schedules"][leg]
+    return len(next(iter(schedule.values())))
 
 
 def _write_extended_mdp(src_mdp: Path, dest_mdp: Path, new_nsteps: int) -> None:
@@ -358,7 +366,10 @@ rule production_bound:
     threads:
         config["simulation_threads"]
     resources:
-        gpu=_gromacs_gpus_per_job if _gromacs_runner == "repex" else 1
+        gpu=_gromacs_gpus_per_job if _gromacs_runner == "repex" else 1,
+        mpi="srun" if _gromacs_runner == "repex" else None,
+        tasks_per_node=_gromacs_num_lambda("bound") if _gromacs_runner == "repex" else None,
+        cpus_per_task=1 if _gromacs_runner == "repex" else None
     log:
         Path(f"{config['working_directory']}/logs")
         / "{ligand}_production_bound_{replica}.log",
@@ -404,10 +415,18 @@ rule production_bound:
             n_replicas = len(lambda_values)
             lam_dirs = " ".join(str(prod_dir / f"lambda_{lv}") for lv in lambda_values)
             shell(
-                f"cd {prod_dir} && mpirun {'--oversubscribe ' if _oversubscribe else ''}"
+                f"cd {prod_dir} && "
+                # mpi=srun above (see resources:) skips the slurm-jobstep executor\'s
+                # nested srun wrapper, but it also strips SLURM_* env vars that mpirun
+                # needs to detect the allocation. Re-export them -- values are static
+                # for this single-node cluster.
+                f"export SLURM_NODELIST=$(hostname) SLURM_TASKS_PER_NODE={n_replicas} SLURM_JOB_NUM_NODES=1 SLURM_NNODES=1 && "
+                f"mpirun {'--oversubscribe ' if _oversubscribe else ''}"
                 f"-mca opal_cuda_support 1 -x OMP_NUM_THREADS=1 "
+                f"{'-x CUDA_MPS_ACTIVE_THREAD_PERCENTAGE=' + str(_gromacs_mps_pct) + ' ' if _gromacs_mps_pct else ''}"
                 f"-np {n_replicas} gmx_mpi mdrun -deffnm gromacs "
-                f"{'-nb gpu -pme gpu ' if _integrator == 'md' else ''}-bonded gpu {'-update gpu ' if _integrator == 'md' else ''}-cpt -1 "
+                f"-nb gpu -nbfe gpu "
+                f"{'-pme gpu ' if _gromacs_oversubscription_factor > 1 or _integrator == 'md' else ''}-bonded gpu {'-update gpu ' if _integrator == 'md' else ''}-nstlist 100 -cpt -1 "
                 f"-c gromacs_out.gro -multidir {lam_dirs} -replex {_repex_frequency} -nex {_nex} "
                 f"> mdrun.log 2>&1"
             )
@@ -441,7 +460,7 @@ rule production_bound:
                         f"> {lam_prod}/grompp.log 2>&1"
                     )
                 # Run mdrun from production directory (crash files stay contained)
-                shell(f"cd {lam_prod} && gmx mdrun -ntmpi 1 -deffnm gromacs > mdrun.log 2>&1")
+                shell(f"cd {lam_prod} && gmx mdrun -ntmpi 1 -nb gpu -nbfe gpu -deffnm gromacs > mdrun.log 2>&1")
 
         # Mark as complete
         shell(f"touch {output.done}")
@@ -474,7 +493,10 @@ rule production_free:
     threads:
         config["simulation_threads"]
     resources:
-        gpu=_gromacs_gpus_per_job if _gromacs_runner == "repex" else 1
+        gpu=_gromacs_gpus_per_job if _gromacs_runner == "repex" else 1,
+        mpi="srun" if _gromacs_runner == "repex" else None,
+        tasks_per_node=_gromacs_num_lambda("free") if _gromacs_runner == "repex" else None,
+        cpus_per_task=1 if _gromacs_runner == "repex" else None
     log:
         Path(f"{config['working_directory']}/logs")
         / "{ligand}_production_free_{replica}.log",
@@ -516,10 +538,18 @@ rule production_free:
             n_replicas = len(lambda_values)
             lam_dirs = " ".join(str(prod_dir / f"lambda_{lv}") for lv in lambda_values)
             shell(
-                f"cd {prod_dir} && mpirun {'--oversubscribe ' if _oversubscribe else ''}"
+                f"cd {prod_dir} && "
+                # mpi=srun above (see resources:) skips the slurm-jobstep executor\'s
+                # nested srun wrapper, but it also strips SLURM_* env vars that mpirun
+                # needs to detect the allocation. Re-export them -- values are static
+                # for this single-node cluster.
+                f"export SLURM_NODELIST=$(hostname) SLURM_TASKS_PER_NODE={n_replicas} SLURM_JOB_NUM_NODES=1 SLURM_NNODES=1 && "
+                f"mpirun {'--oversubscribe ' if _oversubscribe else ''}"
                 f"-mca opal_cuda_support 1 -x OMP_NUM_THREADS=1 "
+                f"{'-x CUDA_MPS_ACTIVE_THREAD_PERCENTAGE=' + str(_gromacs_mps_pct) + ' ' if _gromacs_mps_pct else ''}"
                 f"-np {n_replicas} gmx_mpi mdrun -deffnm gromacs "
-                f"{'-nb gpu -pme gpu ' if _integrator == 'md' else ''}-bonded gpu {'-update gpu ' if _integrator == 'md' else ''}-cpt -1 "
+                f"-nb gpu -nbfe gpu "
+                f"{'-pme gpu ' if _gromacs_oversubscription_factor > 1 or _integrator == 'md' else ''}-bonded gpu {'-update gpu ' if _integrator == 'md' else ''}-nstlist 100 -cpt -1 "
                 f"-c gromacs_out.gro -multidir {lam_dirs} -replex {_repex_frequency} -nex {_nex} "
                 f"> mdrun.log 2>&1"
             )
@@ -553,7 +583,7 @@ rule production_free:
                         f"> {lam_prod}/grompp.log 2>&1"
                     )
                 # Run mdrun from production directory (crash files stay contained)
-                shell(f"cd {lam_prod} && gmx mdrun -ntmpi 1 -deffnm gromacs > mdrun.log 2>&1")
+                shell(f"cd {lam_prod} && gmx mdrun -ntmpi 1 -nb gpu -nbfe gpu -deffnm gromacs > mdrun.log 2>&1")
 
         # Mark as complete
         shell(f"touch {output.done}")
@@ -591,7 +621,10 @@ if _run_vacuum_leg:
         threads:
             config["simulation_threads"]
         resources:
-            gpu=_gromacs_gpus_per_job if _gromacs_runner == "repex" else 1
+            gpu=_gromacs_gpus_per_job if _gromacs_runner == "repex" else 1,
+            mpi="srun" if _gromacs_runner == "repex" else None,
+            tasks_per_node=_gromacs_num_lambda("free") if _gromacs_runner == "repex" else None,
+            cpus_per_task=1 if _gromacs_runner == "repex" else None
         log:
             Path(f"{config['working_directory']}/logs")
             / "{ligand}_production_vacuum_{replica}.log",
@@ -698,10 +731,18 @@ if _run_vacuum_leg:
                 n_replicas = len(lambda_values)
                 lam_dirs = " ".join(str(prod_dir / f"lambda_{lv}") for lv in lambda_values)
                 shell(
-                    f"cd {prod_dir} && mpirun {'--oversubscribe ' if _oversubscribe else ''}"
+                    f"cd {prod_dir} && "
+                # mpi=srun above (see resources:) skips the slurm-jobstep executor\'s
+                # nested srun wrapper, but it also strips SLURM_* env vars that mpirun
+                # needs to detect the allocation. Re-export them -- values are static
+                # for this single-node cluster.
+                f"export SLURM_NODELIST=$(hostname) SLURM_TASKS_PER_NODE={n_replicas} SLURM_JOB_NUM_NODES=1 SLURM_NNODES=1 && "
+                f"mpirun {'--oversubscribe ' if _oversubscribe else ''}"
                     f"-mca opal_cuda_support 1 -x OMP_NUM_THREADS=1 "
+                    f"{'-x CUDA_MPS_ACTIVE_THREAD_PERCENTAGE=' + str(_gromacs_mps_pct) + ' ' if _gromacs_mps_pct else ''}"
                     f"-np {n_replicas} gmx_mpi mdrun -deffnm gromacs "
-                    f"-bonded gpu {'-update gpu ' if _integrator == 'md' else ''}-cpt -1 "
+                    f"-nb gpu -nbfe gpu "
+                    f"{'-pme gpu ' if _gromacs_oversubscription_factor > 1 or _integrator == 'md' else ''}-bonded gpu {'-update gpu ' if _integrator == 'md' else ''}-nstlist 100 -cpt -1 "
                     f"-c gromacs_out.gro -multidir {lam_dirs} -replex {_repex_frequency} -nex {_nex} "
                     f"> mdrun.log 2>&1"
                 )
@@ -732,6 +773,6 @@ if _run_vacuum_leg:
                             f"-o {lam_prod}/gromacs.tpr -maxwarn 1 "
                             f"> {lam_prod}/grompp.log 2>&1"
                         )
-                    shell(f"cd {lam_prod} && gmx mdrun -ntmpi 1 -deffnm gromacs > mdrun.log 2>&1")
+                    shell(f"cd {lam_prod} && gmx mdrun -ntmpi 1 -nb gpu -nbfe gpu -deffnm gromacs > mdrun.log 2>&1")
 
             shell(f"touch {output.done}")

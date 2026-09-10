@@ -6,6 +6,36 @@ _repex_frequency = config["production-settings"].get("gromacs-settings", {}).get
 _nex = config["production-settings"].get("gromacs-settings", {}).get("nex", 1000000)
 _oversubscribe = config["production-settings"].get("gromacs-settings", {}).get("oversubscribe", True)
 _gromacs_gpus_per_job = config["production-settings"].get("gromacs-settings", {}).get("gpus_per_job", 1)
+_gromacs_oversubscription_factor = config["production-settings"].get("gromacs-settings", {}).get("oversubscription_factor", 1)
+_gromacs_mps_pct = config["production-settings"].get("gromacs-settings", {}).get("mps_active_thread_percentage")
+_integrator = config["production-settings"].get("gromacs-settings", {}).get("integrator", "sd").strip().lower()
+
+
+_rbfe_network_cache = None
+
+
+def _gromacs_num_lambda_for_edge(ligand1: str, ligand2: str) -> int:
+    """Number of lambda windows (= MPI ranks for repex) for a specific RBFE edge.
+
+    Unlike ABFE (one fixed window count from a static config schedule), RBFE's
+    network.dat gives each edge its own num_lambda -- read directly rather than
+    discovering it dynamically from directory globbing inside _run_gromacs_stages,
+    since Snakemake resolves `resources:` before the rule body runs.
+    """
+    global _rbfe_network_cache
+    if _rbfe_network_cache is None:
+        network_file = Path(f"{config['working_directory']}/network/network.dat")
+        _rbfe_network_cache = pd.read_csv(
+            str(network_file),
+            sep=r"\s+",
+            names=["ligand1", "ligand2", "num_lambda", "lambda_windows"],
+        )
+    row = _rbfe_network_cache[
+        (_rbfe_network_cache["ligand1"] == ligand1) & (_rbfe_network_cache["ligand2"] == ligand2)
+    ]
+    if row.empty:
+        raise WorkflowError(f"No network.dat entry found for edge {ligand1}~{ligand2}.")
+    return int(row["num_lambda"].iloc[0])
 
 
 def _get_rbfe_pairs():
@@ -188,10 +218,21 @@ def _run_gromacs_stages(output_directory, repex=False, repex_frequency=1000):
         n_replicas = len(lambda_values)
         multidir = " ".join(f"lambda_{lv}" for lv in lambda_values)
         shell(
-            f"cd {output_directory} && mpirun {'--oversubscribe ' if _oversubscribe else ''}"
+            f"cd {output_directory} && "
+            # mpi=srun (see resources: in the production_bound/production_free rules)
+            # makes the slurm-jobstep executor skip its own nested srun wrapper and run
+            # this shell command directly -- but the plugin unconditionally strips
+            # SLURM_* env vars first, including ones mpirun's own PRRTE runtime needs
+            # to detect the allocation (SLURM_NODELIST, SLURM_TASKS_PER_NODE). Re-export
+            # them here -- values are trivial and static for this single-node cluster.
+            f"export SLURM_NODELIST=$(hostname) SLURM_TASKS_PER_NODE={n_replicas} SLURM_JOB_NUM_NODES=1 SLURM_NNODES=1 && "
+            f"mpirun {'--oversubscribe ' if _oversubscribe else ''}"
             f"-mca opal_cuda_support 1 -x OMP_NUM_THREADS=1 "
+            f"{'-x CUDA_MPS_ACTIVE_THREAD_PERCENTAGE=' + str(_gromacs_mps_pct) + ' ' if _gromacs_mps_pct else ''}"
             f"-np {n_replicas} gmx_mpi mdrun -deffnm gromacs "
-            f"-bonded gpu -cpt -1 "
+            # -nbfe (separate free-energy nonbonded GPU kernel) requires GROMACS 2026+.
+            f"-nb gpu -nbfe gpu "
+            f"{'-pme gpu ' if _gromacs_oversubscription_factor > 1 or _integrator == 'md' else ''}-bonded gpu {'-update gpu ' if _integrator == 'md' else ''}-nstlist 100 -cpt -1 "
             f"-c gromacs_out.gro -multidir {multidir} -replex {repex_frequency} -nex {_nex} "
             f"2>&1 | tee mdrun.log"
         )
@@ -242,7 +283,10 @@ rule production_bound:
         done = Path(f"{config['working_directory']}/production/{_engine}/{{ligand1}}~{{ligand2}}/bound_{{replica_number}}/.done")
     threads: config["simulation_threads"]
     resources:
-        gpu=config["production-settings"].get("somd2-settings", {}).get("gpus_per_job", 1) if _engine == "somd2" else (_gromacs_gpus_per_job if _gromacs_runner == "repex" else 1)
+        gpu=config["production-settings"].get("somd2-settings", {}).get("gpus_per_job", 1) if _engine == "somd2" else (_gromacs_gpus_per_job if _gromacs_runner == "repex" else 1),
+        mpi=lambda wc: "srun" if (_engine == "gromacs" and _gromacs_runner == "repex") else None,
+        tasks_per_node=lambda wc: _gromacs_num_lambda_for_edge(wc.ligand1, wc.ligand2) if (_engine == "gromacs" and _gromacs_runner == "repex") else None,
+        cpus_per_task=lambda wc: 1 if (_engine == "gromacs" and _gromacs_runner == "repex") else None
     log:
         Path(f"{config['working_directory']}/logs/{{ligand1}}~{{ligand2}}_production_bound_{{replica_number}}.log")
     run:
@@ -265,7 +309,10 @@ rule production_free:
         done = Path(f"{config['working_directory']}/production/{_engine}/{{ligand1}}~{{ligand2}}/free_{{replica_number}}/.done")
     threads: config["simulation_threads"]
     resources:
-        gpu=config["production-settings"].get("somd2-settings", {}).get("gpus_per_job", 1) if _engine == "somd2" else (_gromacs_gpus_per_job if _gromacs_runner == "repex" else 1)
+        gpu=config["production-settings"].get("somd2-settings", {}).get("gpus_per_job", 1) if _engine == "somd2" else (_gromacs_gpus_per_job if _gromacs_runner == "repex" else 1),
+        mpi=lambda wc: "srun" if (_engine == "gromacs" and _gromacs_runner == "repex") else None,
+        tasks_per_node=lambda wc: _gromacs_num_lambda_for_edge(wc.ligand1, wc.ligand2) if (_engine == "gromacs" and _gromacs_runner == "repex") else None,
+        cpus_per_task=lambda wc: 1 if (_engine == "gromacs" and _gromacs_runner == "repex") else None
     log:
         Path(f"{config['working_directory']}/logs/{{ligand1}}~{{ligand2}}_production_free_{{replica_number}}.log")
     run:

@@ -305,6 +305,12 @@
               "minimum": 1,
               "description": "Hydrogen mass repartitioning factor (3 recommended for 4fs timestep)."
             },
+            "integrator": {
+              "type": "string",
+              "enum": ["sd", "md"],
+              "default": "sd",
+              "description": "GROMACS integrator: 'sd' (Langevin stochastic dynamics, default) or 'md' (leapfrog with explicit v-rescale thermostat). Only 'md' supports -update gpu offload."
+            },
             "runner": {
               "type": "string",
               "enum": ["repex", "standard"],
@@ -333,6 +339,18 @@
               "minimum": 1,
               "default": 1,
               "description": "Number of GPUs per production job for repex (default: 1)."
+            },
+            "oversubscription_factor": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1,
+              "description": "GPU oversubscription factor for NVIDIA MPS -- number of concurrent MPI ranks sharing each GPU. Leave at 1 (default, no MPS) unless MPS is confirmed running and its GPU-fault history for this hardware is understood."
+            },
+            "mps_active_thread_percentage": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "description": "CUDA_MPS_ACTIVE_THREAD_PERCENTAGE cap per MPS client (optional). Only meaningful when oversubscription_factor > 1 and MPS is active."
             },
             "free-leg-settings": {
               "type": "object",
