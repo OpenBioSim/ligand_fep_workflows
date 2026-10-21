@@ -55,7 +55,7 @@
         },
         "box_type": {
           "type": "string",
-          "enum": ["cubic", "triclinic", "orthorhombic"],
+          "enum": ["cubic", "rhombicDodecahedronHexagon", "rhombicDodecahedronSquare", "truncatedOctahedron"],
           "description": "Box geometry type."
         }
       },

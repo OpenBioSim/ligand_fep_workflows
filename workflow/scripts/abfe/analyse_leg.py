@@ -19,6 +19,8 @@ Author: ABFE Workflow
 
 import argparse
 import glob
+import sys
+import traceback
 from pathlib import Path
 
 import matplotlib.colors as colors
@@ -271,6 +273,8 @@ def main():
             df, overlap = analyse_gromacs(input_dir, temperature_k, args.estimator)
         else:
             import BioSimSpace as BSS
+            # Surface the underlying error if MBAR fails.
+            BSS.setVerbose(True)
             analyser = BSS.FreeEnergy.Relative
             temperature = BSS.Types.Temperature(args.temperature)
             pmf, overlap_raw = analyser.analyse(
@@ -286,22 +290,22 @@ def main():
                 }
             )
             overlap = np.array(overlap_raw)
+            if not df.empty and not np.isclose(df["lambda"].iloc[-1], 1.0):
+                raise ValueError(
+                    f"PMF ends at lambda = {df['lambda'].iloc[-1]}, expected 1.0."
+                )
+
+        if df.empty:
+            raise ValueError("Analysis returned an empty PMF.")
 
         final_dg = df["free_energy (kcal/mol)"].iloc[-1]
         final_error = df["error (kcal/mol)"].iloc[-1]
         print(f"Leg DG: {final_dg:.4f} +/- {final_error:.4f} kcal/mol")
 
-    except Exception as e:
-        print(f"Warning: Analysis failed: {e}")
-        print("Writing empty results...")
-        df = pd.DataFrame(
-            {
-                "lambda": [],
-                "free_energy (kcal/mol)": [],
-                "error (kcal/mol)": [],
-            }
-        )
-        overlap = np.array([])
+    except Exception:
+        print(f"Error: Could not analyse {input_dir}:")
+        traceback.print_exc()
+        sys.exit(1)
 
     # Save PMF
     df.to_csv(output_dir / "pmf.csv", index=False)

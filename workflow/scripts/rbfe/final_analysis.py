@@ -303,7 +303,6 @@ parser.add_argument(
     required=True,
     help="Directory to save the output plots.",
 )
-log = "Logging for final analysis"
 args = parser.parse_args()
 
 # make the output dir if it doesn't exist
@@ -313,6 +312,7 @@ args.output_directory.mkdir(parents=True, exist_ok=True)
 temp = float(re.match(r"[\d.]+", args.temperature).group(0))
 # We need to get the ligands, leg and replica number from the input filenames
 info = {"ligand1": [], "ligand2": [], "leg": [], "replica": [], "dg": []}
+invalid_files = []
 for input_file in args.input_files:
     df = pd.read_csv(input_file)
     # all we need from this is the value of the pmf at lambda=1
@@ -322,7 +322,7 @@ for input_file in args.input_files:
         val = val["free_energy (kcal/mol)"].astype(float)
         pmf_value = float(val.iloc[0])
     except:
-        log += f"Error reading pmf value from {input_file}. Possible that results are missing or simulation crashed.\n"
+        invalid_files.append(input_file)
         continue
     name1, name2, leg, replica = get_info_from_directory(input_file)
     info["dg"].append(pmf_value)
@@ -330,6 +330,13 @@ for input_file in args.input_files:
     info["ligand2"].append(name2)
     info["leg"].append(leg)
     info["replica"].append(replica)
+
+if invalid_files:
+    print(
+        f"WARNING: Excluding {len(invalid_files)} PMF file(s) with no value at lambda = 1.0:"
+    )
+    for f in invalid_files:
+        print(f"  {f}")
 
 # convert info to dataframe for easier searching and manipulation
 df_info = pd.DataFrame(info)
@@ -370,6 +377,12 @@ for required_leg in ["bound", "free"]:
         )
         print("Check that the analysis script can parse the simulation output format.")
         sys.exit(1)
+
+incomplete = pivoted[pivoted[["bound", "free"]].isna().any(axis=1)]
+if not incomplete.empty:
+    print("WARNING: Excluding replicas missing a bound or free leg:")
+    for _, row in incomplete.iterrows():
+        print(f"  {row['ligand1']}~{row['ligand2']} replica {row['replica']}")
 
 # Calculate bound - free for each replica
 pivoted["DDG"] = pivoted["bound"] - pivoted["free"]

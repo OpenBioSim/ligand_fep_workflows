@@ -113,7 +113,9 @@ lig_p_solvated = BSS.Solvent.solvate(
     angles=angles,
     ion_conc=args.ion_conc,
 )
-BSS.Stream.save(lig_p_solvated, str(outdir / f"{ligand_name}_free"))
+# OpenMM requires triclinic box vectors in reduced form.
+lig_p_solvated.reduceBoxVectors()
+BSS.Stream.save(lig_p_solvated,str(outdir / f"{ligand_name}_free"))
 
 # again for protein-ligand system
 box_min, box_max = system_bound.getAxisAlignedBoundingBox()
@@ -128,4 +130,5 @@ system_solvated = BSS.Solvent.solvate(
     angles=angles,
     ion_conc=args.ion_conc,
 )
-BSS.Stream.save(system_solvated, str(outdir / f"{ligand_name}_bound"))
+system_solvated.reduceBoxVectors()
+BSS.Stream.save(system_solvated,str(outdir / f"{ligand_name}_bound"))
