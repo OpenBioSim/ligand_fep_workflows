@@ -40,6 +40,9 @@ def runProcess(system, protocol, engine="gromacs", pmemd=False):
     # If it worked, try to get the system. No need to block, since it's already finished.
     system = process.getSystem()
 
+    # Box vectors read back from engine output may not be in the reduced form OpenMM requires.
+    system.reduceBoxVectors()
+
     return system
 
 

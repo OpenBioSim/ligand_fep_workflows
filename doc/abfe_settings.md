@@ -77,7 +77,7 @@ setup_settings:
   box_length: 5.0
 
   # Simulation box shape
-  # Options: cubic, triclinic, orthorhombic
+  # Options: cubic, rhombicDodecahedronHexagon, rhombicDodecahedronSquare, truncatedOctahedron
   box_type: "cubic"
 ```
 
