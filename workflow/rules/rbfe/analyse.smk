@@ -36,7 +36,7 @@ rule analyse_single_target:
         output_directory = lambda wildcards: Path(f"{config['working_directory']}/analysis/{_engine}/{wildcards.ligand1}~{wildcards.ligand2}/{wildcards.leg}_{wildcards.replica_number}"),
         script = Path("workflow/scripts/rbfe/analyse_single_leg.py")
     shell:
-        "python {params.script} --input-directory {params.input_directory} --output-directory {params.output_directory} --plot-overlap-matrix --plot-pmf"
+        "PYMBAR_DISABLE_JAX=1 python {params.script} --input-directory {params.input_directory} --output-directory {params.output_directory} --plot-overlap-matrix --plot-pmf"
 
 rule collate_rbfe_analysis:
     priority: 20

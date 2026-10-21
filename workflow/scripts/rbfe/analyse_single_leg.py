@@ -1,4 +1,6 @@
 import argparse
+import sys
+import traceback
 from pathlib import Path
 
 import BioSimSpace as BSS
@@ -228,6 +230,10 @@ input_dir = Path(args.input_directory)
 output_dir = Path(args.output_directory)
 # fist make sure the output directory exists
 output_dir.mkdir(parents=True, exist_ok=True)
+
+# Surface the underlying error if MBAR fails.
+BSS.setVerbose(True)
+
 try:
     pmf, overlap = BSS.FreeEnergy.Relative.analyse(str(input_dir))
     # pmf is a list of 3-element tuples (lambda, free energy, error)
@@ -244,21 +250,17 @@ try:
         }
     )
 
+    if df.empty:
+        raise ValueError("Analysis returned an empty PMF.")
+    if not np.isclose(df["lambda"].iloc[-1], 1.0):
+        raise ValueError(
+            f"PMF ends at lambda = {df['lambda'].iloc[-1]}, expected 1.0."
+        )
 
-except Exception as e:
-    print(f"Could not analyse the input directory {input_dir}: {e}")
-    # now we want to write blank dataframes and overlaps for later logging
-    df = pd.DataFrame(
-        {
-            "lambda": [],
-            "free_energy (kcal/mol)": [],
-            "error (kcal/mol)": [],
-        }
-    )
-    output_file = output_dir / "pmf.csv"
-
-    overlap = np.array([])
-    overlap_file = output_dir / "overlap.npy"
+except Exception:
+    print(f"Could not analyse the input directory {input_dir}:")
+    traceback.print_exc()
+    sys.exit(1)
 
 output_file = output_dir / "pmf.csv"
 df.to_csv(output_file, index=False)
