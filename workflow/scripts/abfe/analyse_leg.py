@@ -208,6 +208,11 @@ def analyse_gromacs(
     xvg_files = sorted(glob.glob(str(input_dir / "lambda_*" / "gromacs.xvg")))
     if not xvg_files:
         raise ValueError(f"No gromacs.xvg files found under {input_dir}")
+    lambda_dirs = glob.glob(str(input_dir / "lambda_*"))
+    if len(xvg_files) != len(lambda_dirs):
+        raise ValueError(
+            f"Found {len(xvg_files)} gromacs.xvg files for {len(lambda_dirs)} lambda windows under {input_dir}"
+        )
     print(f"Found {len(xvg_files)} lambda windows")
 
     u_nk_list = []
@@ -215,10 +220,7 @@ def analyse_gromacs(
         try:
             u_nk_list.append(extract_u_nk(xvg, T=temperature_k))
         except Exception as e:
-            print(f"Warning: skipping {xvg}: {e}")
-
-    if not u_nk_list:
-        raise ValueError("Could not parse any xvg files")
+            raise ValueError(f"Could not parse {xvg}") from e
 
     u_nk = pd.concat(u_nk_list).sort_index(level="time")
 
