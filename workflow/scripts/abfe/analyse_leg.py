@@ -18,6 +18,8 @@ Author: ABFE Workflow
 """
 
 import argparse
+import sys
+import traceback
 from pathlib import Path
 
 import matplotlib.colors as colors
@@ -197,6 +199,9 @@ def main():
         import BioSimSpace as BSS
         analyser = BSS.FreeEnergy.Relative
 
+    # Surface the underlying error if MBAR fails.
+    BSS.setVerbose(True)
+
     input_dir = Path(args.input_directory)
     output_dir = Path(args.output_directory)
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -226,23 +231,20 @@ def main():
             }
         )
 
+        if df.empty:
+            raise ValueError("Analysis returned an empty PMF.")
+        if not np.isclose(lambda_values[-1], 1.0):
+            raise ValueError(f"PMF ends at lambda = {lambda_values[-1]}, expected 1.0.")
+
         # Get final DG value
         final_dg = free_energies[-1]
         final_error = errors[-1]
         print(f"Leg DG: {final_dg:.4f} +/- {final_error:.4f} kcal/mol")
 
-    except Exception as e:
-        print(f"Warning: Analysis failed: {e}")
-        print("Writing empty results...")
-
-        df = pd.DataFrame(
-            {
-                "lambda": [],
-                "free_energy (kcal/mol)": [],
-                "error (kcal/mol)": [],
-            }
-        )
-        overlap = np.array([])
+    except Exception:
+        print(f"Error: Could not analyse {input_dir}:")
+        traceback.print_exc()
+        sys.exit(1)
 
     # Save PMF
     df.to_csv(output_dir / "pmf.csv", index=False)

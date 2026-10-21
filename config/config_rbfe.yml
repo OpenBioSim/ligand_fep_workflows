@@ -2,7 +2,7 @@
 # ===========================================================
 #
 # This configuration file defines all settings for the RBFE workflow.
-# For detailed documentation of each setting, see doc/workflow_settings.md
+# For detailed documentation of each setting, see doc/rbfe_settings.md
 
 # Workflow method
 method: rbfe

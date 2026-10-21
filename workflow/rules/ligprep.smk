@@ -3,11 +3,12 @@ from pathlib import Path
 protein_files = config["protein_files"]
 setup_settings = config["setup_settings"]
 _method = config.get("method", "rbfe").strip().lower()
+_ligand_paths = {Path(f).stem: f for f in LIGAND_FILES}
 
 
 rule setup:
     input:
-        ligand=Path("workflow/inputs") / "ligands" / "{ligand}.sdf",
+        ligand=lambda wildcards: _ligand_paths[wildcards.ligand],
         # RBFE needs network prep to complete first; ABFE has no network dependency
         network=(
             [Path(f"{config['working_directory']}/network") / "network.dat"]

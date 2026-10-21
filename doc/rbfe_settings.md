@@ -56,13 +56,14 @@ setup_settings:
   water_model: "tip3p"          # Solvent water model
   ion_concentration: 0.15       # Ionic concentration in mol/L
   box_length: 5.0               # Minimum distance from solute to box edge in nm
-  box_type: "cubic"             # Box geometry: "cubic", "triclinic", or "orthorhombic"
+  box_type: "cubic"             # Box geometry: "cubic", "rhombicDodecahedronHexagon",
+                                # "rhombicDodecahedronSquare", or "truncatedOctahedron"
 ```
 
 - `ligand_forcefield` is passed to BioSimSpace for small molecule parameterisation. `gaff2` is the recommended default.
 - `ion_concentration` adds counterions to neutralise the system plus additional salt to reach the given concentration.
 - `box_length` sets the minimum padding between the solute and the box edge (in nm). Larger values increase system size and simulation cost.
-- `box_type` sets the periodic box geometry. `cubic` is simplest; `triclinic` can be more efficient for elongated systems.
+- `box_type` sets the periodic box geometry. `cubic` is simplest; the triclinic shapes (rhombic dodecahedron, truncated octahedron) need fewer waters for the same padding, so are cheaper to simulate.
 
 ---
 
@@ -286,9 +287,12 @@ analysis-settings:
 ## Running the Workflow
 
 ```bash
-# Build the perturbation network and prepare all systems (stops before production)
+# Build the perturbation network
+snakemake prep_network -s workflow/Snakefile --configfile config/config_rbfe.yml --cores 8
+
+# Prepare all systems (stops before production; requires the network above)
 snakemake -s workflow/Snakefile --configfile config/config_rbfe.yml \
-    --until prepare_rbfe --cores 8
+    --until rbfe_prep --cores 8
 
 # Run the full workflow (prep + production + analysis)
 snakemake -s workflow/Snakefile --configfile config/config_rbfe.yml --cores 8
