@@ -286,9 +286,12 @@ analysis-settings:
 ## Running the Workflow
 
 ```bash
-# Build the perturbation network and prepare all systems (stops before production)
+# Build the perturbation network
+snakemake prep_network -s workflow/Snakefile --configfile config/config_rbfe.yml --cores 8
+
+# Prepare all systems (stops before production; requires the network above)
 snakemake -s workflow/Snakefile --configfile config/config_rbfe.yml \
-    --until prepare_rbfe --cores 8
+    --until rbfe_prep --cores 8
 
 # Run the full workflow (prep + production + analysis)
 snakemake -s workflow/Snakefile --configfile config/config_rbfe.yml --cores 8
