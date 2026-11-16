@@ -82,7 +82,7 @@ Relative binding free energy calculations comparing ligand pairs through a pertu
 | **network_prep** | Generate perturbation network using LOMAP |
 | **setup** | Parameterise ligands (GAFF2), solvate free and bound systems |
 | **min/eq** | Minimise and equilibrate end states (configurable multi-stage protocol) |
-| **prepare** | Create merged (alchemical) systems, apply HMR |
+| **prepare** | Create merged (alchemical) systems, apply HMR (GROMACS only) |
 | **production** | Production MD per lambda window per replica |
 | **analysis** | MBAR analysis, network-wide DDG estimation |
 

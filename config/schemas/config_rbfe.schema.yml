@@ -305,6 +305,11 @@
               "minimum": 1,
               "description": "Hydrogen mass repartitioning factor (3 recommended for 4fs timestep)."
             },
+            "cutoff": {
+              "type": "string",
+              "pattern": "^[0-9]+(\\.[0-9]+)?A$",
+              "description": "PME non-bonded cutoff distance (e.g., '9A'). Also used for GROMACS minimisation and equilibration stages."
+            },
             "free-leg-settings": {
               "type": "object",
               "properties": {
@@ -452,12 +457,18 @@
             "cutoff_type": {
               "type": "string",
               "enum": ["RF", "PME"],
-              "description": "Electrostatics cutoff type. RF is faster and more thoroughly tested for RBFE."
+              "description": "Electrostatics cutoff type (default PME)."
             },
             "cutoff": {
               "type": "string",
               "pattern": "^[0-9]+(\\.[0-9]+)?A$",
-              "description": "Cutoff distance (e.g., '12A')."
+              "description": "Cutoff distance (default '9A')."
+            },
+            "hmr_factor": {
+              "type": "number",
+              "minimum": 1,
+              "maximum": 3,
+              "description": "Hydrogen mass repartitioning factor applied by SOMD2 (default 1.5)."
             },
             "energy_frequency": {
               "type": "string",

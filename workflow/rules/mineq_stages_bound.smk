@@ -141,6 +141,7 @@ for _i_bound, _stage_bound in enumerate(_bound_stage_names):
             ),
             script=f"workflow/scripts/{_prefix_bound}",
             extra_arg=_extra_arg_bound,
+            cutoff_arg=_gromacs_cutoff_arg(),
         shell:
             """
             echo "Running {rule} for {wildcards.ligand}"
@@ -150,6 +151,7 @@ for _i_bound, _stage_bound in enumerate(_bound_stage_names):
                 --outfile-name {wildcards.ligand}_bound \
                 {params.engine_arg} \
                 {params.extra_arg} \
+                {params.cutoff_arg} \
                 {params.restraint_string_arg} \
                 {params.restraint_indices_arg} \
                 {params.restraint_force_constant_arg}

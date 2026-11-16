@@ -97,14 +97,20 @@ def main():
     parser.add_argument(
         "--cutoff-type",
         type=str,
-        default="rf",
-        help="Electrostatics cutoff type for SOMD2 (RF or PME).",
+        default="pme",
+        help="Electrostatics cutoff type for SOMD2 (PME or RF). GROMACS always uses PME.",
     )
     parser.add_argument(
         "--cutoff",
         type=str,
-        default="12A",
-        help="Cutoff distance for SOMD2 (e.g., '12A').",
+        default="9A",
+        help="Non-bonded cutoff distance for SOMD2 and GROMACS (e.g., '9A').",
+    )
+    parser.add_argument(
+        "--hmr-factor",
+        type=float,
+        default=1.5,
+        help="Hydrogen mass repartitioning factor for SOMD2. Any repartitioning already applied to the input is rescaled to this factor.",
     )
     parser.add_argument(
         "--energy-frequency",
@@ -308,6 +314,9 @@ def main():
             raise ValueError(
                 f"Failed to load system from {args.input}. Please check the file."
             )
+        cutoff_nm = f"{BSS.Types.Length(args.cutoff).nanometers().value():.4g}"
+        cutoff_options = {"rlist": cutoff_nm, "rvdw": cutoff_nm, "rcoulomb": cutoff_nm}
+
         # Gromacs needs a pre-production minimisation and equilibration step
         # We can't do this in python, so we use BSS to setup the directories,
         # then our snakemake rule will handle the actual running of Gromacs
@@ -317,6 +326,7 @@ def main():
             min_protocol,
             engine="gromacs",
             work_dir=working_dir + "/minimisation",
+            extra_options=cutoff_options,
             extra_args={
                 "-ntmpi": "1",
             },
@@ -338,6 +348,7 @@ def main():
             nvt_protocol,
             engine="gromacs",
             work_dir=working_dir + "/heat",
+            extra_options=cutoff_options,
             extra_args={
                 "-ntmpi": "1",
             },
@@ -358,6 +369,7 @@ def main():
             npt_protocol,
             engine="gromacs",
             work_dir=working_dir + "/eq",
+            extra_options=cutoff_options,
             extra_args={
                 "-ntmpi": "1",
             },
@@ -380,6 +392,7 @@ def main():
             protocol_production,
             engine="gromacs",
             work_dir=working_dir,
+            extra_options=cutoff_options,
             extra_args={
                 "-ntmpi": "1",
             },
@@ -444,7 +457,8 @@ def main():
             integrator=args.integrator,
             shift_delta=args.shift_delta,
             perturbable_constraint=args.perturbable_constraint,
-            hmr=False,  # HMR is applied in the pre-production step
+            hmr=True,
+            h_mass_factor=args.hmr_factor,
             overwrite=True,  # Allow reruns without manual cleanup
             restart=args.restart,
             replica_exchange=(runner_type == "repex"),

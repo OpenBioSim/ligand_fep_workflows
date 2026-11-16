@@ -208,6 +208,8 @@ production-settings:
   gromacs-settings:
     # Hydrogen mass repartitioning factor (3 recommended for GROMACS with 4fs timestep)
     hmr_factor: 3
+    # PME cutoff distance, also used for the GROMACS min/eq stages
+    cutoff: 9A
 
     # Settings for FREE leg production
     free-leg-settings:
@@ -230,15 +232,15 @@ production-settings:
       restart-interval: 500ps
 
   # SOMD2-specific settings (used when engine: somd2)
-  # HMR is applied in the pre-production step, so SOMD2 uses hmr=False internally.
   somd2-settings:
     runtime: 10ps             # Production runtime per lambda window (typical production: 2ns)
     timestep: 4fs             # Integration timestep
     temperature: 300K         # Simulation temperature
     pressure: 1bar            # Pressure for NPT ensemble
     use-modified-dummies: true   # Apply ghostly dummy atom modifications
-    cutoff_type: RF           # Electrostatics cutoff type (RF or PME). RF is faster and more thoroughly tested.
-    cutoff: 12A               # Cutoff distance (12Å recommended for RF)
+    cutoff_type: PME          # Electrostatics cutoff type (PME or RF)
+    cutoff: 9A                # Cutoff distance
+    hmr_factor: 1.5           # Hydrogen mass repartitioning factor, applied by SOMD2
     energy_frequency: 1ps     # Energy sampling interval (keep fine-grained for MBAR)
     frame_frequency: 500ps    # Trajectory frame saving interval
     checkpoint_frequency: 500ps  # Checkpoint saving interval

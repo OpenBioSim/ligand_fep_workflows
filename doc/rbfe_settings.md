@@ -195,8 +195,9 @@ production-settings:
     temperature: 300K
     pressure: 1bar
     use-modified-dummies: true      # Apply ghostly dummy atom corrections
-    cutoff_type: RF                 # "RF" (reaction field) or "PME"
-    cutoff: 12A
+    cutoff_type: PME                # "PME" or "RF" (reaction field)
+    cutoff: 9A
+    hmr_factor: 1.5                 # Hydrogen mass repartitioning factor, applied by SOMD2
     energy_frequency: 1ps           # Energy output frequency (keep fine for MBAR)
     frame_frequency: 500ps          # Trajectory frame output frequency
     checkpoint_frequency: 500ps     # Checkpoint write frequency
@@ -210,7 +211,8 @@ production-settings:
 Key SOMD2 options:
 
 - `use-modified-dummies`: Applies corrections to dummy (ghost) atom bonded terms using the [ghostly](https://github.com/OpenBioSim/ghostly) library. Recommended for most perturbations.
-- `cutoff_type`: `RF` (reaction field) is faster and suitable for most use cases. `PME` is more rigorous but computationally more expensive.
+- `cutoff_type` and `cutoff`: Default to `PME` with a 9 Å cutoff, matching the SOMD2 defaults. `RF` (reaction field) is faster, but truncates interactions at the cutoff, including intramolecular interactions in ligands that are larger than the cutoff.
+- `hmr_factor`: Hydrogen mass repartitioning factor applied by SOMD2 at run time (default 1.5, maximum 3). The GROMACS `hmr_factor` isn't applied to SOMD2 inputs.
 - `energy_frequency`: Controls how often energies are written for all lambda windows. Keep this fine-grained (1ps or similar) for accurate MBAR free energy estimates.
 - `runner`: `repex` runs replica exchange Monte Carlo between lambda windows and requires one OpenMM context per window. Ensure sufficient total GPU VRAM. Use `standard` for single-GPU or memory-constrained setups.
 - `gpus_per_job`: Number of GPUs per job. For `repex` with many windows, increasing this can improve throughput.
@@ -228,6 +230,7 @@ production-settings:
 
   gromacs-settings:
     hmr_factor: 3                   # Hydrogen mass repartitioning factor
+    cutoff: 9A                      # PME cutoff, also used for GROMACS min/eq stages
 
     lambda_schedules:
       bound:
@@ -259,7 +262,8 @@ production-settings:
 
 Key GROMACS options:
 
-- `hmr_factor`: Hydrogen mass repartitioning factor. Set to 3 when using a 4fs timestep. HMR is applied during preparation; the production run uses `hmr: false` internally.
+- `hmr_factor`: Hydrogen mass repartitioning factor. Set to 3 when using a 4fs timestep. HMR is applied during preparation, and only when `engine: gromacs`.
+- `cutoff`: PME cutoff distance (default 9 Å, the same as SOMD2). It's also used for any GROMACS minimisation and equilibration stages, whichever production engine is used.
 - `lambda_schedules`: Defines how bonded, coulomb, and vdW interactions are scaled across lambda windows for each leg. All lists within a schedule must have the same length. The bound leg can include a `bonded` schedule; the free leg typically does not.
 - `report-interval` and `restart-interval` are specified in time units and converted to steps internally based on the timestep.
 - `use-modified-dummies`: Same ghostly library corrections as SOMD2. Recommended for most perturbations.
@@ -367,7 +371,9 @@ All outputs are written under `working_directory` (e.g. `output/rbfe/`).
 
 **SOMD2 lambda windows**: For RBFE with SOMD2, the number of lambda windows per perturbation is controlled by `network_settings.lambda_windows` and `network_settings.diff_lambda_windows`, not by `somd2-settings`. There is no `num_lambda` field in the SOMD2 block.
 
-**HMR with GROMACS**: When using `timestep: 4fs`, set `hmr_factor: 3`. HMR is applied during the preparation step; production runs then use `hmr: false` internally. Setting `hmr_factor: 1` disables HMR.
+**HMR with GROMACS**: When using `timestep: 4fs`, set `hmr_factor: 3`. HMR is applied during the preparation step. Setting `hmr_factor: 1` disables HMR.
+
+**HMR with SOMD2**: SOMD2 applies HMR itself, using `somd2-settings.hmr_factor` (default 1.5). Any repartitioning already present in the input is rescaled to this factor.
 
 **Replicas and error estimation**: Use at least 3 replicas (`num_replicas: 3`). The final reported uncertainty is the maximum of the propagated MBAR error and the standard deviation of the mean across replicas.
 

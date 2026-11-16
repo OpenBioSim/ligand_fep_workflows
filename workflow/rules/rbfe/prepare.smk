@@ -10,7 +10,8 @@ rule rbfe_prep:
         done = Path(f"{config['working_directory']}/rbfe_prepared/{{leg}}/{{ligand1}}~{{ligand2}}.bss")
     params:
         out_dir = Path(config["working_directory"]) / "rbfe_prepared",
-        hmr_factor = rbfe_prep_settings["gromacs-settings"]["hmr_factor"],
+        # SOMD2 applies its own HMR factor at run time.
+        hmr_factor = 1.0 if _engine == "somd2" else rbfe_prep_settings["gromacs-settings"]["hmr_factor"],
     shell:
         """
         echo "Preparing FEP input for {wildcards.ligand1} and {wildcards.ligand2} in leg {wildcards.leg}"  # Debug info

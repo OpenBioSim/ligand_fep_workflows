@@ -2,11 +2,24 @@
 import BioSimSpace as BSS
 
 
-def runProcess(system, protocol, engine="gromacs", pmemd=False):
+def gromacsCutoffOptions(system, cutoff):
+    """
+    GROMACS options for a non-bonded cutoff (e.g. '9A'). Empty if no cutoff is
+    given or the system is in vacuum, where BioSimSpace uses an infinite cutoff.
+    """
+    if cutoff is None:
+        return {}
+    if system.getBox()[0] is None or system.nWaterMolecules() == 0:
+        return {}
+    nm = f"{BSS.Types.Length(cutoff).nanometers().value():.4g}"
+    return {"rlist": nm, "rvdw": nm, "rcoulomb": nm}
+
+
+def runProcess(system, protocol, engine="gromacs", pmemd=False, cutoff=None):
     """
     Given a solvated system (BSS object) and BSS protocol, run a process workflow with either
     Sander (CPU) or pmemd.cuda (GPU). NPT is typically done with GPU to save computing time.
-    Returns the processed system.
+    The cutoff (e.g. '9A') is only used by GROMACS. Returns the processed system.
     """
     engine = engine.strip().lower()
 
@@ -19,7 +32,11 @@ def runProcess(system, protocol, engine="gromacs", pmemd=False):
 
     elif engine == "gromacs":
         process = BSS.Process.Gromacs(
-            system, protocol, extra_args={"-ntmpi": "1"}, ignore_warnings=True
+            system,
+            protocol,
+            extra_options=gromacsCutoffOptions(system, cutoff),
+            extra_args={"-ntmpi": "1"},
+            ignore_warnings=True,
         )
 
     elif engine == "openmm":

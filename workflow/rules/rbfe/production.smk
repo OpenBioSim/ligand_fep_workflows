@@ -44,6 +44,8 @@ def create_python_script_call(wc, input, leg):
             args.append(f"--shift-delta {cfg['shift_delta']}")
         if cfg.get("perturbable_constraint"):
             args.append(f"--perturbable-constraint {cfg['perturbable_constraint']}")
+        if cfg.get("hmr_factor"):
+            args.append(f"--hmr-factor {cfg['hmr_factor']}")
         runner = cfg.get("runner", "repex")
         args.append(f"--runner {runner}")
         if config["production-settings"].get("restart", False):
@@ -69,6 +71,9 @@ def create_python_script_call(wc, input, leg):
             args.append(f"--report-interval {cfg['report-interval']}")
         if cfg.get("restart-interval"):
             args.append(f"--restart-interval {cfg['restart-interval']}")
+        cutoff = config["production-settings"]["gromacs-settings"].get("cutoff")
+        if cutoff:
+            args.append(f"--cutoff {cutoff}")
 
     args.append(f"--network-location {config['working_directory']}/network")
 

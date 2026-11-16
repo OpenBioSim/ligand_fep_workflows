@@ -96,6 +96,7 @@ production-settings:
 
   gromacs-settings:
     hmr_factor: 3
+    cutoff: 9A
     free-leg-settings:
       runtime: 10ps
       timestep: 4fs
@@ -119,8 +120,9 @@ production-settings:
     temperature: 300K
     pressure: 1bar
     use-modified-dummies: true
-    cutoff_type: RF
-    cutoff: 12A
+    cutoff_type: PME
+    cutoff: 9A
+    hmr_factor: 1.5
     energy_frequency: 1ps
     frame_frequency: 10ps
     checkpoint_frequency: 10ps

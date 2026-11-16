@@ -29,6 +29,12 @@ parser.add_argument(
     default="gromacs",
 )
 parser.add_argument(
+    "--cutoff",
+    type=str,
+    help="Non-bonded cutoff for GROMACS (e.g., '9A'). Defaults to the BioSimSpace value.",
+    default=None,
+)
+parser.add_argument(
     "--minimisation-steps",
     type=int,
     help="Number of minimisation steps to perform",
@@ -91,6 +97,7 @@ system = runProcess(
     system=system,
     protocol=protocol,
     engine=args.engine,
+    cutoff=args.cutoff,
 )
 # Save the system to the output directory
 output_file = output_dir / args.outfile_name
