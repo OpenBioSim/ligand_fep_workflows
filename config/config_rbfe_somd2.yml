@@ -1,0 +1,160 @@
+# SOMD2 RBFE Workflow Configuration
+# =================================
+#
+# The SOMD2 protocol from the OpenBioSim benchmarks. Each edge's ligands are merged
+# and solvated once per leg, both end states of the merged system are equilibrated,
+# and SOMD2 runs each edge in one direction, seeding the windows nearest each end
+# state from its equilibrated structure. See doc/rbfe_somd2_settings.md.
+#
+# Usage:
+#   snakemake -s workflow/Snakefile --configfile config/config_rbfe_somd2.yml
+
+method: rbfe_somd2
+
+# Input files
+# -----------
+# Glob pattern for ligand input files (SDF format, one ligand per file).
+ligands: "workflow/inputs/ligands/*.sdf"
+
+# Glob pattern for the parameterised protein files (e.g. prm7 and rst7). Any crystal
+# waters, ions or cofactors in them are kept.
+protein_files: "workflow/inputs/protein/protein.*"
+
+# Working directory for all workflow outputs.
+working_directory: "output/rbfe_somd2"
+
+# CPU threads per job.
+simulation_threads: 5
+
+# Ligand parameterisation
+# -----------------------
+ligand_settings:
+  # The force field also assigns the partial charges.
+  forcefield: "openff_unconstrained-2.3.0"
+
+# Atom mapping
+# ------------
+mapping_settings:
+  # BioSimSpace's MCS strategy: "full", "heavy" (heavy atoms first, then hydrogens),
+  # or "both" (the larger of the two).
+  mcs_strategy: full
+  allow_ring_breaking: false
+  allow_ring_size_change: false
+
+# Solvation
+# ---------
+setup_settings:
+  water_model: "tip3p"
+  # NaCl concentration in mol/L. The system is also neutralised.
+  ion_concentration: 0.15
+  # cubic, dodecahedron or octahedron
+  box_type: dodecahedron
+  # Minimum distance between the solute and the box edge.
+  bound_padding: 1.0 nm
+  free_padding: 1.5 nm
+
+# End state equilibration
+# -----------------------
+# Each stage is a minimisation or dynamics run, with optional positional restraints
+# on "heavy" (solute heavy atoms), "backbone", or a Sire selection string. 'k' is the
+# restraint constant, i.e. E = k * r^2. Both end states of the merged system are
+# equilibrated with the stages for their leg.
+equilibration_settings:
+  # Apply Ghostly's modifications to ghost atoms, as SOMD2 does in production.
+  ghost_modifications: true
+  # Rescale the lambda = 1 box to the lambda = 0 one and run the 'match_box' stages
+  # at constant volume, so that both end states share one box (needed for GCMC).
+  match_box: true
+  bound:
+    defaults:
+      temperature: 298.15 K
+      timestep: 2 fs
+    stages:
+      - {type: minimisation, restraint: heavy, k: 5 kcal mol-1 A-2}
+      - {type: dynamics, runtime: 15 ps, timestep: 1 fs, restraint: heavy, k: 5 kcal mol-1 A-2}
+      - {type: minimisation, restraint: heavy, k: 2 kcal mol-1 A-2}
+      - {type: minimisation, restraint: heavy, k: 0.1 kcal mol-1 A-2}
+      - {type: minimisation}
+      - {type: dynamics, runtime: 5 ps, timestep: 1 fs, pressure: 1 bar, restraint: heavy, k: 1 kcal mol-1 A-2}
+      - {type: dynamics, runtime: 5 ps, timestep: 1 fs, pressure: 1 bar, restraint: heavy, k: 0.5 kcal mol-1 A-2}
+      - {type: dynamics, runtime: 10 ps, timestep: 1 fs, pressure: 1 bar, restraint: backbone, k: 0.5 kcal mol-1 A-2}
+      - {type: dynamics, runtime: 10 ps, pressure: 1 bar}
+      - {type: dynamics, runtime: 2 ns, pressure: 1 bar}
+    match_box:
+      - {type: minimisation}
+      - {type: dynamics, runtime: 50 ps}
+  free:
+    defaults:
+      temperature: 298.15 K
+      timestep: 2 fs
+    stages:
+      - {type: minimisation, restraint: heavy, k: 5 kcal mol-1 A-2}
+      - {type: dynamics, runtime: 15 ps, timestep: 1 fs, restraint: heavy, k: 5 kcal mol-1 A-2}
+      - {type: minimisation, restraint: heavy, k: 2 kcal mol-1 A-2}
+      - {type: minimisation, restraint: heavy, k: 0.1 kcal mol-1 A-2}
+      - {type: minimisation}
+      - {type: dynamics, runtime: 5 ps, timestep: 1 fs, pressure: 1 bar, restraint: heavy, k: 1 kcal mol-1 A-2}
+      - {type: dynamics, runtime: 5 ps, timestep: 1 fs, pressure: 1 bar, restraint: heavy, k: 0.5 kcal mol-1 A-2}
+      - {type: dynamics, runtime: 10 ps, pressure: 1 bar}
+      - {type: dynamics, runtime: 500 ps, pressure: 1 bar}
+    match_box:
+      - {type: minimisation}
+      - {type: dynamics, runtime: 50 ps}
+
+# Production
+# ----------
+production-settings:
+  # Independent replicas of each leg, for error estimation.
+  num_replicas: 3
+
+  # GPUs per job. Replica exchange spreads the lambda windows over them.
+  gpus_per_job: 1
+
+  # A leg that becomes unstable is rerun from scratch with this timestep. Set to
+  # null to disable.
+  fallback_timestep: 2 fs
+
+  # SOMD2 options, passed to SOMD2 as they are. Any other SOMD2 option can be added.
+  somd2:
+    runtime: 5 ns
+    timestep: 4 fs
+    temperature: 298.15 K
+    # Production runs at constant pressure. SOMD2 switches to constant volume when
+    # GCMC is enabled.
+    pressure: 1 bar
+    num_lambda: 11
+    checkpoint_frequency: 500 ps
+    frame_frequency: 500 ps
+    replica_exchange: true
+    # Concentrate sampling on the windows that contribute most to the uncertainty.
+    adaptive_repex: true
+    # Energies only for the nearest windows, since distant windows seldom overlap.
+    num_energy_neighbours: 3
+    # Monte Carlo flips of terminal rings.
+    terminal_flip_frequency: 1 ps
+    # REST2 on the automatically selected region, with the exponential profile.
+    rest2_scale: 4.0
+    rest2_profile: exponential
+    # Grand canonical water sampling in a sphere around the ligand. Off by default.
+    gcmc: false
+    gcmc_frequency: 5 ps
+    # Keep the co-alchemical ion of charge-changing edges away from the ligand.
+    coalchemical_restraint_dist: 10 A
+
+  # SOMD2 options that apply to one leg only. GCMC is only used in the bound leg,
+  # since the free leg's ligand is in bulk water.
+  leg-overrides:
+    free:
+      gcmc: false
+
+# Analysis settings
+# -----------------
+analysis-settings:
+  # Plotting backend: "native" (matplotlib) or "cinnabar" (if installed)
+  backend: cinnabar
+  # Path to experimental results file (optional)
+  experimental-results: workflow/inputs/exp_data_tyk2.dat
+  # Units of experimental data: "kcal/mol", "kJ/mol", or "Ki_uM"
+  experimental-units: Ki_uM
+  # Temperature used to convert experimental binding constants.
+  temperature: 298.15K

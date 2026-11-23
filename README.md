@@ -56,11 +56,13 @@ RBFE and ABFE each have their own config file:
 
 - `config/config_rbfe.yml` -- RBFE settings (includes `method: rbfe`)
 - `config/config_abfe.yml` -- ABFE settings (includes `method: abfe`)
+- `config/config_rbfe_somd2.yml` -- SOMD2-only RBFE settings (includes `method: rbfe_somd2`)
 
 Schema validation is defined in `config/schemas/`. Full documentation:
 
 - `doc/rbfe_settings.md` -- RBFE config reference
 - `doc/abfe_settings.md` -- ABFE config reference
+- `doc/rbfe_somd2_settings.md` -- SOMD2 RBFE config reference
 
 ### Production Engines
 
@@ -89,6 +91,19 @@ Relative binding free energy calculations comparing ligand pairs through a pertu
 ### Network Preparation
 
 If `{working_directory}/network/network.dat` already exists, the network preparation step is skipped. This lets you manually define or edit the perturbation network before running the workflow.
+
+## SOMD2 RBFE Workflow
+
+`method: rbfe_somd2` runs RBFE with SOMD2 only, using the protocol from the OpenBioSim benchmarks, which relies on SOMD2 features the other engines don't have:
+
+- Each edge's ligands are merged and solvated once per leg, and both end states of the merged system are equilibrated. SOMD2 seeds the windows nearest each end state from its structure, so each edge runs in one direction only.
+- Replica exchange with adaptive allocation of sampling, REST2, and terminal ring flips. GCMC is available, but off by default.
+
+```bash
+snakemake -s workflow/Snakefile --configfile config/config_rbfe_somd2.yml
+```
+
+See `doc/rbfe_somd2_settings.md` for the stages and settings.
 
 ## ABFE Workflow
 

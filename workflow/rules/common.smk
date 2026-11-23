@@ -4,6 +4,8 @@ _method = config.get("method", "rbfe").strip().lower()
 
 if _method == "abfe":
     validate(config, schema="../../config/schemas/config_abfe.schema.yml")
+elif _method == "rbfe_somd2":
+    validate(config, schema="../../config/schemas/config_rbfe_somd2.schema.yml")
 else:
     validate(config, schema="../../config/schemas/config_rbfe.schema.yml")
 

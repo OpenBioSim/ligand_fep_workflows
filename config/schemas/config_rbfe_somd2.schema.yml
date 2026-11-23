@@ -1,0 +1,130 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "SOMD2 RBFE Workflow Config Schema",
+  "description": "Validates the settings for the SOMD2 RBFE workflow (method: rbfe_somd2).",
+  "type": "object",
+  "$defs": {
+    "stage": {
+      "type": "object",
+      "properties": {
+        "type": {"type": "string", "enum": ["minimisation", "dynamics"]},
+        "runtime": {"type": "string"},
+        "timestep": {"type": "string"},
+        "temperature": {"type": "string"},
+        "pressure": {"type": ["string", "null"]},
+        "restraint": {"type": ["string", "null"], "description": "'heavy', 'backbone' or a Sire selection."},
+        "k": {"type": "string", "description": "Restraint constant, e.g. '5 kcal mol-1 A-2'."},
+        "max_iterations": {"type": "integer", "minimum": 1},
+        "cutoff": {"type": "string"},
+        "constraint": {"type": "string"},
+        "perturbable_constraint": {"type": "string"},
+        "fallback_runtime": {"type": "string"},
+        "fallback_timestep": {"type": "string"}
+      },
+      "required": ["type"],
+      "additionalProperties": false
+    },
+    "leg_protocol": {
+      "type": "object",
+      "properties": {
+        "defaults": {"type": "object"},
+        "stages": {"type": "array", "items": {"$ref": "#/$defs/stage"}, "minItems": 1},
+        "match_box": {"type": "array", "items": {"$ref": "#/$defs/stage"}}
+      },
+      "required": ["stages"],
+      "additionalProperties": false
+    }
+  },
+  "properties": {
+    "method": {"type": "string", "enum": ["rbfe_somd2"]},
+    "ligands": {"type": "string", "description": "Glob pattern for ligand SDF files."},
+    "protein_files": {"type": "string", "description": "Glob pattern for the parameterised protein files."},
+    "working_directory": {"type": "string"},
+    "simulation_threads": {"type": "integer", "minimum": 1},
+    "ligand_settings": {
+      "type": "object",
+      "properties": {
+        "forcefield": {"type": "string", "description": "Ligand force field, which also assigns the charges."}
+      },
+      "additionalProperties": false
+    },
+    "mapping_settings": {
+      "type": "object",
+      "properties": {
+        "mcs_strategy": {"type": "string", "enum": ["full", "heavy", "both"]},
+        "allow_ring_breaking": {"type": "boolean"},
+        "allow_ring_size_change": {"type": "boolean"}
+      },
+      "additionalProperties": false
+    },
+    "setup_settings": {
+      "type": "object",
+      "properties": {
+        "water_model": {"type": "string"},
+        "ion_concentration": {"type": "number", "minimum": 0},
+        "box_type": {"type": "string", "enum": ["cubic", "dodecahedron", "octahedron"]},
+        "bound_padding": {"type": "string"},
+        "free_padding": {"type": "string"}
+      },
+      "additionalProperties": false
+    },
+    "equilibration_settings": {
+      "type": "object",
+      "properties": {
+        "ghost_modifications": {"type": "boolean"},
+        "match_box": {"type": "boolean"},
+        "bound": {"$ref": "#/$defs/leg_protocol"},
+        "free": {"$ref": "#/$defs/leg_protocol"}
+      },
+      "required": ["bound", "free"],
+      "additionalProperties": false
+    },
+    "production-settings": {
+      "type": "object",
+      "properties": {
+        "num_replicas": {"type": "integer", "minimum": 1},
+        "gpus_per_job": {"type": "integer", "minimum": 1},
+        "fallback_timestep": {"type": ["string", "null"]},
+        "somd2": {
+          "type": "object",
+          "description": "SOMD2 options, passed through to SOMD2.",
+          "properties": {
+            "num_lambda": {"type": "integer", "minimum": 3, "maximum": 20}
+          },
+          "additionalProperties": true
+        },
+        "leg-overrides": {
+          "type": ["object", "null"],
+          "properties": {
+            "bound": {"type": "object"},
+            "free": {"type": "object"}
+          },
+          "additionalProperties": false
+        }
+      },
+      "required": ["num_replicas", "somd2"],
+      "additionalProperties": false
+    },
+    "analysis-settings": {
+      "type": "object",
+      "properties": {
+        "backend": {"type": "string", "enum": ["native", "cinnabar"]},
+        "experimental-results": {"type": ["string", "null"]},
+        "experimental-units": {"type": "string", "enum": ["kcal/mol", "kJ/mol", "Ki_uM"]},
+        "temperature": {"type": "string"}
+      },
+      "additionalProperties": false
+    }
+  },
+  "required": [
+    "method",
+    "ligands",
+    "protein_files",
+    "working_directory",
+    "simulation_threads",
+    "equilibration_settings",
+    "production-settings",
+    "analysis-settings"
+  ],
+  "additionalProperties": false
+}

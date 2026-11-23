@@ -3,10 +3,12 @@
 # Usage:
 #   RBFE: snakemake -s workflow/Snakefile --configfile config/config_rbfe.yml
 #   ABFE: snakemake -s workflow/Snakefile --configfile config/config_abfe.yml
+#   SOMD2 RBFE: snakemake -s workflow/Snakefile --configfile config/config_rbfe_somd2.yml
 #
 # The workflow method is determined by the "method" key in the config file:
 #   method: rbfe  (default)
 #   method: abfe
+#   method: rbfe_somd2  (SOMD2 only, see doc/rbfe_somd2_settings.md)
 
 from pathlib import Path
 import glob as glob_module
@@ -20,7 +22,11 @@ import glob as glob_module
 
 # Determine workflow method and engine
 _method = config.get("method", "rbfe").strip().lower()
-_engine = config.get("engine", config["production-settings"].get("engine", "gromacs")).strip().lower()
+if _method == "rbfe_somd2":
+    _engine = "somd2"
+else:
+    _engine = config.get("engine", config["production-settings"].get("engine", "gromacs")).strip().lower()
+_is_rbfe = _method in ("rbfe", "rbfe_somd2")
 
 
 # Helper functions
@@ -54,7 +60,7 @@ if not LIGANDS:
 
 # Method-specific helper functions
 # -----------------------------------------------------
-if _method == "rbfe":
+if _is_rbfe:
     def read_ligand_pairs(wildcards):
         """Read the network file and return all required PMF paths for RBFE."""
         import pandas as pd
@@ -92,13 +98,18 @@ elif _method == "abfe":
 # Shared rule includes
 # -----------------------------------------------------
 include: "rules/common.smk"
-include: "rules/ligprep.smk"
-include: "rules/mineq_stages_bound.smk"
-include: "rules/mineq_stages_free.smk"
+if _method != "rbfe_somd2":
+    include: "rules/ligprep.smk"
+    include: "rules/mineq_stages_bound.smk"
+    include: "rules/mineq_stages_free.smk"
 
 # Method-specific rule includes
 # -----------------------------------------------------
-if _method == "rbfe":
+if _method == "rbfe_somd2":
+    include: "rules/rbfe_somd2.smk"
+    include: "rules/rbfe/analyse.smk"
+
+elif _method == "rbfe":
     include: "rules/rbfe/network_prep.smk"
     include: "rules/rbfe/prepare.smk"
     include: "rules/rbfe/production.smk"
@@ -114,12 +125,12 @@ elif _method == "abfe":
     include: "rules/abfe/analyse.smk"
 
 else:
-    raise ValueError(f"Unknown method '{_method}'. Must be 'rbfe' or 'abfe'.")
+    raise ValueError(f"Unknown method '{_method}'. Must be 'rbfe', 'rbfe_somd2' or 'abfe'.")
 
 
 # Target rules
 # -----------------------------------------------------
-if _method == "rbfe":
+if _is_rbfe:
     rule all:
         input:
             Path(f"{config['working_directory']}/analysis/{_engine}/final_simulation_results.csv")
@@ -185,7 +196,7 @@ rule clean_equilibration:
 
 # Status rules
 # -----------------------------------------------------
-if _method == "rbfe":
+if _is_rbfe:
     rule status:
         """
         Display the current RBFE workflow status.

@@ -42,6 +42,11 @@ parser.add_argument(
     metavar="[3 - 20]",
 )
 parser.add_argument(
+    "--one-direction",
+    action="store_true",
+    help="Write each perturbation once, rather than in both directions.",
+)
+parser.add_argument(
     "--output-directory",
     type=str,
     help="Path to the output directory for the network information",
@@ -143,7 +148,7 @@ with open(output_dir / "network.dat", "w") as network_file:
             .replace("\n", "")
         )
 
-        # write out both directions for this perturbation.
+        # write out this perturbation, and its reverse unless --one-direction.
         writer.writerow(
             [
                 pert[0],
@@ -152,11 +157,12 @@ with open(output_dir / "network.dat", "w") as network_file:
                 lam_array,
             ]
         )
-        writer.writerow(
-            [
-                pert[1],
-                pert[0],
-                len(lam_array_np),
-                lam_array,
-            ]
-        )
+        if not args.one_direction:
+            writer.writerow(
+                [
+                    pert[1],
+                    pert[0],
+                    len(lam_array_np),
+                    lam_array,
+                ]
+            )
