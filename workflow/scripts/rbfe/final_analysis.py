@@ -409,16 +409,15 @@ if args.experimental_results is not None:
         try:
             from cinnabar import plotting, wrangle
 
-            plotting_backend = "cinnabar"
             cinnabar_API = "old"
         except ImportError:
-            from cinnabar import FEMap, plotting
+            try:
+                from cinnabar import FEMap, plotting
 
-            plotting_backend = "cinnabar"
-            cinnabar_API = "new"
-        except:
-            print("No cinnabar found, falling back to native plotting method")
-            plotting_backend = "native"
+                cinnabar_API = "new"
+            except ImportError:
+                print("No cinnabar found, falling back to native plotting method")
+                plotting_backend = "native"
 
     if plotting_backend == "native":
         plot_results(
