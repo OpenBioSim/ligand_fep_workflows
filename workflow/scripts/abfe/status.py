@@ -564,7 +564,7 @@ def print_analysis_status(
         # Average row for multi-replica
         if len(replica_dgs) > 1:
             mean_dg = np.mean(replica_dgs)
-            std_dg = np.std(replica_dgs)
+            std_dg = np.std(replica_dgs, ddof=1) / np.sqrt(len(replica_dgs))
             print(f"{colors.DIM}{'-' * TERM_WIDTH}{colors.RESET}")
             avg_str = f"{colors.CYAN}{colors.BOLD}{mean_dg:+.2f} +/- {std_dg:.2f}{colors.RESET}"
             print(
@@ -633,7 +633,7 @@ def print_results_summary(
         if replica_dgs:
             mean_dg = np.mean(replica_dgs)
             if len(replica_dgs) > 1:
-                std_dg = np.std(replica_dgs)
+                std_dg = np.std(replica_dgs, ddof=1) / np.sqrt(len(replica_dgs))
                 dg_str = (
                     f"{complete_color}{mean_dg:+.3f} +/- {std_dg:.3f}{colors.RESET}"
                 )

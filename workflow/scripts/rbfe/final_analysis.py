@@ -211,7 +211,8 @@ def plot_results_cinnabar(
         )
         for _, row in unique_pairs_df_sim.iterrows():
             writer.writerow(
-                [row["ligand1"], row["ligand2"], row["DDG"], row["error"], "0.0"]
+                # cinnabar needs a number, so a single replica's undefined error is 0.
+                [row["ligand1"], row["ligand2"], row["DDG"], row["error"] if pd.notna(row["error"]) else 0.0, "0.0"]
             )
 
     if cinnabar_backend == "old":
@@ -390,8 +391,9 @@ pivoted["DDG"] = pivoted["bound"] - pivoted["free"]
 # Now average over replicas for each ligand1/ligand2 pair
 result = pivoted.groupby(["ligand1", "ligand2"])["DDG"].mean().reset_index()
 # Now the error
+# Standard error of the mean over replicas, undefined (NaN) for a single replica.
 result["error"] = (
-    pivoted.groupby(["ligand1", "ligand2"])["DDG"].std(ddof=0).reset_index()["DDG"]
+    pivoted.groupby(["ligand1", "ligand2"])["DDG"].sem().reset_index()["DDG"]
 )
 
 # save "result" to the output directory as a csv file

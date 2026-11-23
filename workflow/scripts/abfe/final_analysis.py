@@ -410,11 +410,11 @@ def main():
         .reset_index()
     )
 
-    # Add standard deviation over replicas
-    df_summary["DG_bind_std"] = df_all.groupby("ligand")["DG_bind"].std(ddof=0).values
+    # Standard error of the mean over replicas, undefined (NaN) for a single replica.
+    df_summary["DG_bind_sem"] = df_all.groupby("ligand")["DG_bind"].sem().values
 
-    # Final error is max of propagated error and replica std
-    df_summary["error"] = np.maximum(df_summary["error"], df_summary["DG_bind_std"])
+    # Final error is the larger of the propagated error and the replica standard error.
+    df_summary["error"] = np.fmax(df_summary["error"], df_summary["DG_bind_sem"])
 
     # Save summary results
     df_summary.to_csv(output_dir / "final_abfe_results.csv", index=False)

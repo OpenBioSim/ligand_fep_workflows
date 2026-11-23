@@ -487,7 +487,7 @@ def print_analysis_status(
 
         if len(replica_ddgs) > 1:
             mean_ddg = np.mean(replica_ddgs)
-            std_ddg = np.std(replica_ddgs)
+            std_ddg = np.std(replica_ddgs, ddof=1) / np.sqrt(len(replica_ddgs))
             print(f"{colors.DIM}{'-' * TERM_WIDTH}{colors.RESET}")
             avg_str = f"{colors.CYAN}{colors.BOLD}{mean_ddg:+.2f} +/- {std_ddg:.2f}{colors.RESET}"
             print(
@@ -554,7 +554,7 @@ def print_results_summary(
         if replica_ddgs:
             mean_ddg = np.mean(replica_ddgs)
             if len(replica_ddgs) > 1:
-                std_ddg = np.std(replica_ddgs)
+                std_ddg = np.std(replica_ddgs, ddof=1) / np.sqrt(len(replica_ddgs))
                 dg_str = (
                     f"{complete_color}{mean_ddg:+.3f} +/- {std_ddg:.3f}{colors.RESET}"
                 )
