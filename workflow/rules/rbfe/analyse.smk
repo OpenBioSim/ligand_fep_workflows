@@ -46,7 +46,9 @@ rule collate_rbfe_analysis:
         files = read_ligand_pairs
     output:
         collated = Path(f"{config['working_directory']}/analysis/{_engine}/final_simulation_results.csv")
+    log:
+        Path(f"{config['working_directory']}/logs/final_analysis_{_engine}.log")
     threads: config["simulation_threads"]
     run:
-        python_cmd = create_final_analysis_call(wildcards, input)
-        shell(python_cmd)
+        python_cmd = create_final_analysis_call(wildcards, input).strip()
+        shell(f"{python_cmd} 2>&1 | tee {log}")
